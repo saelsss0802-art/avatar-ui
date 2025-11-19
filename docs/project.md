@@ -75,3 +75,30 @@
 
 6. **PLAN.md 更新**
    - ステップ4～5の達成状況を反映し、ステップ7（公式最小構成へのリファクタ計画）を追加。
+
+## ディレクトリ構成
+
+- `app/` – AG-UI CLI クライアント
+  - `.env`, `package.json`, `package-lock.json`, `tsconfig.json` … プロジェクト設定。
+  - `src/` – ソースコード（`agent.ts`, `index.ts`, `logger.ts`）。`npm run dev` で実行。
+  - `logs/cli.log` – CLI の実行ログ（自作ロガー）。
+  - `node_modules/` – npm 依存パッケージ。
+
+- `server/` – FastAPI + `ag_ui_adk`
+  - `main.py` – FastAPI サーバー本体。`/agui` を公開。
+  - `src/ag_ui_adk/` – 公式ミドルウェアのソース。基本的に触らず参照のみ。
+  - `examples/`, `tests/`, `ARCHITECTURE.md` など – 公式サンプル／ドキュメント。挙動の参考用。
+  - `.env`, `.env.example`, `pyproject.toml`, `uv.lock` – Python 環境と設定ファイル。
+  - `logs/app.log` – サーバーの実行ログ（`RotatingFileHandler`）。
+
+- `docs/`
+  - `project.md` – 本ドキュメント。旧 `agui-adk-cli.md` / `analysis-setMessages-issue.md` の内容を集約し、進捗と手順を一元管理。
+
+- `ag-ui-upstream/`
+  - 公式 AG-UI リポジトリのクローン。`apps/`, `sdks/`, `integrations/` などを参照用に保持。
+
+- `PLAN.md`
+  - 進行計画のメモ。各ステップの完了状況を記録。
+
+- その他
+  - `スクリーンショット 2025-11-18 16.50.48.png` – 参考資料（必要に応じて整理予定）。
