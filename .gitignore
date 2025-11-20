@@ -1,6 +1,9 @@
 # AG-UI upstream repository (reference only)
 ag-ui-upstream/
 
+# Internal documentation
+# docs/internal/
+
 # Node modules
 node_modules/
 

@@ -39,8 +39,8 @@ sample_agent = LlmAgent(
     - 常に簡潔で分かりやすい回答を心がけてください。
     """,
     tools=[
-        adk_tools.preload_memory_tool.PreloadMemoryTool(),
-        adk_tools.google_search_tool.GoogleSearchTool()
+        adk_tools.preload_memory,
+        adk_tools.google_search
     ],
 )
 
