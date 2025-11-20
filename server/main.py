@@ -48,7 +48,6 @@ agent = ADKAgent(
     adk_agent=sample_agent,
     app_name="agents",
     user_id="cli_user",
-    session_timeout_seconds=3600,
     use_in_memory_services=True,
 )
 
