@@ -3,6 +3,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
 from google.adk.agents import LlmAgent
@@ -48,6 +49,16 @@ agent = ADKAgent(
 )
 
 app = FastAPI(title="AG-UI ADK Bridge")
+
+# CORS設定（開発用）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.middleware("http")
 async def log_agui_request(request: Request, call_next):
     if request.url.path == "/agui" and request.method == "POST":

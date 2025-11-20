@@ -1,11 +1,13 @@
 import readline from "node:readline";
 import { randomUUID } from "node:crypto";
 import "dotenv/config";
-import { logInfo, logError } from "./logger";
+import { logInfo, logError } from "./core/logger";
 import type { AgentSubscriber } from "@ag-ui/client";
-import { agent, agentConfig } from "./agent";
+import { agent, agentConfig } from "./core/agent";
+import { loggerSubscriber } from "./core/loggerSubscriber";
 
 logInfo(`agent endpoint ${agentConfig.endpoint}`);
+agent.subscribe(loggerSubscriber);
 
 const rl = readline.createInterface({
   input: process.stdin,

@@ -2,10 +2,11 @@
   "name": "client-cli-example",
   "version": "0.1.0",
   "private": true,
+  "main": "dist-electron/index.js",
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev": "tsx --watch src/index.ts",
-    "build": "tsc",
+    "dev": "vite",
+    "build": "vite build",
+    "package": "electron-builder",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -15,7 +16,12 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "electron": "^39.2.2",
+    "electron-builder": "^26.0.12",
     "tsx": "^4.7.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^7.2.2",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
   }
 }

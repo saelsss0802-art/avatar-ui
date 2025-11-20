@@ -56,6 +56,10 @@
 - [x] `package.json` に `dev:ui` / `build:ui`（Vite）を追加する計画と Electron 取り込み手順をまとめる。
 - [x] AG-UI イベント種別ごとの DOM 更新方針（ストリーミング、ツール結果、エラー、アバター制御）を表形式で整理。
 - [ ] CLI → GUI の完全移行手順（CLI 削除の段取り、ブランチ戦略、切替チェックリスト）とテスト観点を整理。
+  - [x] Vite/Electron 依存（vite, electron, vite-plugin-electron など）を導入し、`vite.config.ts` を作成。
+  - [x] `app/src/core`, `app/src/main`, `app/src/preload`, `app/src/renderer` を整備し、GUI ファイル群（HTML/CSS/TS/Assets）を実装。
+  - [ ] `npm run dev` で動作確認（送受信、ツール、エラー、アバター、ログ）を行い、チェックリストを消化。
+  - [ ] CLI ファイル削除・package.json 整理後、`npm run dev` で再確認して最終コミット。
 
 ## 補足メモ
 - AG-UI CLI で得た `messages` フローは最終的に Web UI に移植。まずはプロトコル理解を優先し、Copilot 周りのコードは計画的に撤去する。
