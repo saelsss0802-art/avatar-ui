@@ -12,9 +12,10 @@ const inputEl = document.getElementById("input") as HTMLInputElement | null;
 const outputEl = document.querySelector("#pane-output .text-scroll") as HTMLElement | null;
 const avatarImg = document.getElementById("avatar-img") as HTMLImageElement | null;
 const metaBar = document.getElementById("meta");
+const avatarLabel = document.getElementById("avatar-label");
 
 async function initApp() {
-  if (!inputEl || !outputEl || !avatarImg) {
+  if (!inputEl || !outputEl || !avatarImg || !avatarLabel) {
     throw new Error("UI elements missing");
   }
 
@@ -37,9 +38,11 @@ async function initApp() {
 
   // 2. UI初期化 (設定ロード後)
   if (metaBar) {
-    // アバター下の表示名: 設定されたエージェント名 + バージョン
-    metaBar.textContent = `${config.ui.nameTags.assistant} v${pkg.version}`;
+    // メタバーはプロダクト名 + バージョン (不変)
+    metaBar.textContent = `${pkg.name} v${pkg.version}`;
   }
+  // アバター枠内のラベルはエージェント名 (設定連動)
+  avatarLabel.textContent = config.ui.nameTags.assistant;
 
   // 3. UIエンジン (Game Loop) の初期化
   // これひとつでタイプライター・アニメーション・音声すべてを制御する
