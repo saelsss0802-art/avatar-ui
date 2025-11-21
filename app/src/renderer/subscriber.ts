@@ -61,7 +61,7 @@ export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscribe
       activeToolLine = null;
     },
     
-    onRunFailedEvent({ error }) {
+    onRunFailed({ error }: { error: unknown }) {
       engine.reset(); // 喋ってる途中なら止める
       appendLine(
         "text-line--error",
