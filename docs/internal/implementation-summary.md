@@ -87,7 +87,7 @@ app/src/
 
 **使用技術：**
 - `vite-plugin-electron`：Vite と Electron を統合
-- `vite-plugin-electron-renderer`：Renderer で Node.js API を有効化
+- `vite-plugin-electron-renderer`：**未使用**（Node統合を避けるため）。必要なら preload で最小権限を公開する方針。
 
 **結果：**
 - `npm run dev` だけで Electron + ホットリロード
@@ -98,44 +98,29 @@ app/src/
 
 ---
 
-### 4. **Node.js API アクセス：Renderer で `fs` や `process.env` が使えない**
+### 4. **Node.js API アクセス：セキュリティ優先で renderer をブラウザ相当の権限に固定**
 
-#### 問題点（初期の誤解）
-- 「Electron の renderer は通常のブラウザと同じ」という誤解
-- `fs` を使った logger が renderer で動かない
+#### 方針
+- 危険な情報（検索クエリ等）を renderer から直接送出しないため、`nodeIntegration: false` / `contextIsolation: true` を維持。
+- Node API が必要な場合は **preload + contextBridge** 経由で最小権限のエクスポートを行う（現在は何も公開していない）。
 
-#### 根本原因
-- `nodeIntegration: false`（デフォルト）では Node.js API が無効
-- しかし今回は「Electron アプリ専用」なのでセキュリティ制約は不要
-
-#### 解決方法（Electron-first アプローチ）
+#### 現状設定（2025-11-20 時点）
 ```typescript
 // app/src/main/index.ts
 const win = new BrowserWindow({
   webPreferences: {
-    nodeIntegration: true,      // ← Node.js API を有効化
-    contextIsolation: false,    // ← preload なしで直接アクセス
+    nodeIntegration: false,   // Node API を封じる
+    contextIsolation: true,   // renderer を隔離
   },
 });
 ```
 
-```typescript
-// vite.config.ts
-export default {
-  plugins: [
-    electron({ entry: 'src/main/index.ts' }),
-    electronRenderer(),  // ← renderer で Node.js API を使えるようにする
-  ],
-};
-```
-
 **結果：**
-- renderer プロセスから直接 `fs`, `process.env` にアクセス可能
-- IPC 通信や preload スクリプトが不要
-- logger をそのまま renderer で使用可能
+- renderer から `fs`/`process.env` などへは直接アクセス不可。
+- 「危険データを誤送信させない」ことを最優先し、必要になった場合のみ preload でピンポイント公開する運用にする。
 
-**公式準拠状態：✅ Electron-first アプリの標準**
-- デスクトップ専用アプリでは `nodeIntegration: true` が一般的
+**公式準拠状態：✅ Electronセキュリティ推奨**
+- デスクトップ専用でも、外部APIを扱う場合は `nodeIntegration: false` が推奨。必要最低限だけcontextBridgeで渡す。
 
 ---
 
@@ -259,7 +244,7 @@ add_adk_fastapi_endpoint(app, agent, path="/agui")
 
 #### 4. **Electron 統合**
 - `vite-plugin-electron` + `vite-plugin-electron-renderer` → ✅ ベストプラクティス
-- `nodeIntegration: true` → ✅ デスクトップ専用アプリの標準
+- `nodeIntegration: false` / `contextIsolation: true` → ✅ セキュリティ優先（必要時のみ preload で権限付与）
 
 ---
 
@@ -315,4 +300,3 @@ def health():
 ---
 
 生成日時：2025-11-19
-

@@ -1,0 +1,17 @@
+{
+  "server": {
+    "llmModel": "gemini-2.5-flash",
+    "systemPrompt": "あなたは親切なAIアシスタントです。\n\n- 日本語で自然に応答してください。\n- ユーザーが挨拶したら、親しみを込めて挨拶を返してください。\n- 質問には的確に答え、必要であれば検索ツールなどを活用してください。\n- 常に簡潔で分かりやすい回答を心がけてください。",
+    "logMaxBytes": 1000000,
+    "logBackupCount": 3
+  },
+  "ui": {
+    "theme": "retro-green",
+    "typeSpeed": 30,
+    "soundVolume": 0.5,
+    "mouthInterval": 120,
+    "beepFrequency": 800,
+    "beepDuration": 0.05,
+    "beepVolumeEnd": 0.01
+  }
+}
