@@ -3,7 +3,7 @@ import { join } from 'path'
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 860,      // 横長レイアウトに最適化
+    width: 720,      // 16:9 aspect ratio based on height 360 (360 * 16 / 9 = 640)
     height: 360,     // 最小高さに合わせる
     minWidth: 600,   // レイアウト崩れを防ぐ最小幅
     minHeight: 360,  // 最小高さを合わせる

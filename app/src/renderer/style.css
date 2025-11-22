@@ -4,6 +4,10 @@
   font-family: Consolas, Menlo, monospace;
   font-size: 14px;
   /* Revert to 14px as standard fonts are more readable */
+  
+  /* Stronger, multi-layer glow for CRT effect */
+  --term-glow-text: 0 0 3px rgba(0, 255, 0, 0.6), 0 0 12px rgba(0, 255, 0, 0.4);
+  --term-glow-box: 0 0 3px rgba(0, 255, 0, 0.4), 0 0 8px rgba(0, 255, 0, 0.2);
 }
 
 html,
@@ -13,6 +17,7 @@ body {
   padding: 0;
   background: #000; /* 透過ウィンドウでもUI全体を黒で塗る */
   color: #0f0;
+  text-shadow: var(--term-glow-text);
 }
 
 .app {
@@ -42,7 +47,7 @@ body {
   right: 20px;
   height: 3px;
   background: rgba(0, 255, 0, 0.8);
-  box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  box-shadow: 0 0 6px rgba(0, 255, 0, 0.6); /* 罫線も強く発光 */
 }
 
 /* フレームレス時にドラッグできる領域を広く確保 */
@@ -66,7 +71,8 @@ input,
 #pane-output {
   grid-column: 1 / 2;
   grid-row: 1 / 2;
-  border: 1px solid rgba(0, 255, 0, 0.4);
+  border: 1px solid rgba(0, 255, 0, 0.5);
+  box-shadow: var(--term-glow-box);
   background: rgba(0, 20, 0, 0.2);
   display: flex;
   flex-direction: column;
@@ -145,7 +151,8 @@ input,
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 255, 0, 0.4);
+  border: 1px solid rgba(0, 255, 0, 0.5);
+  box-shadow: var(--term-glow-box);
   background: rgba(0, 20, 0, 0.3);
 }
 
@@ -162,7 +169,8 @@ input,
 #pane-avatar {
   grid-column: 2 / 3;
   grid-row: 1 / 2; /* 出力エリアと同じ高さに揃える */
-  border: 1px solid rgba(0, 255, 0, 0.4);
+  border: 1px solid rgba(0, 255, 0, 0.5);
+  box-shadow: var(--term-glow-box);
   background: rgba(0, 40, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -177,6 +185,7 @@ input,
   width: 140px;
   height: 140px;
   border: 1px solid rgba(0, 255, 0, 0.6);
+  box-shadow: var(--term-glow-box);
   background: rgba(0, 255, 0, 0.1);
   object-fit: cover;
 }
