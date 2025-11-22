@@ -44,14 +44,57 @@ async function initApp() {
   // アバター枠内のラベルはエージェント名 (設定連動)
   avatarLabel.textContent = config.ui.nameTags.avatar;
 
+  // ---------------------------------------------------------
+  // カラーテーマ適用ロジック (CSS変数へ注入)
+  // ---------------------------------------------------------
+  const root = document.documentElement;
+
+  // HEX -> RGB 変換ヘルパー
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16),
+        }
+      : null;
+  };
+
+  // テーマカラー適用
+  if (config.ui.themeColor) {
+    const rgb = hexToRgb(config.ui.themeColor);
+    if (rgb) {
+      root.style.setProperty("--theme-color-r", String(rgb.r));
+      root.style.setProperty("--theme-color-g", String(rgb.g));
+      root.style.setProperty("--theme-color-b", String(rgb.b));
+    }
+  }
+
+  // ユーザーカラー適用
+  if (config.ui.userColor) {
+    const rgb = hexToRgb(config.ui.userColor);
+    if (rgb) {
+      root.style.setProperty("--user-color-r", String(rgb.r));
+      root.style.setProperty("--user-color-g", String(rgb.g));
+      root.style.setProperty("--user-color-b", String(rgb.b));
+    }
+  }
+
+  // ツールカラー適用
+  if (config.ui.toolColor) {
+    const rgb = hexToRgb(config.ui.toolColor);
+    if (rgb) {
+      root.style.setProperty("--tool-color-r", String(rgb.r));
+      root.style.setProperty("--tool-color-g", String(rgb.g));
+      root.style.setProperty("--tool-color-b", String(rgb.b));
+    }
+  }
+
   // 透過設定を適用
   if (config.ui.opacity !== undefined) {
     document.body.style.backgroundColor = `rgba(0, 0, 0, 0.0)`; // bodyは完全透過
-    const appEl = document.querySelector('.app') as HTMLElement;
-    if (appEl) {
-      // 設定値が 0.7 なら、rgba(0,0,0,0.7) を適用
-      appEl.style.backgroundColor = `rgba(0, 0, 0, ${config.ui.opacity})`;
-    }
+    root.style.setProperty("--ui-opacity", String(config.ui.opacity));
   }
 
   // 3. UIエンジン (Game Loop) の初期化
@@ -101,7 +144,6 @@ async function initApp() {
       await agent.runAgent(
         {
           runId: crypto.randomUUID(),
-          threadId: agentConfig.threadId,
         },
         createUiSubscriber({
           outputEl,

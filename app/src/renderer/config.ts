@@ -1,6 +1,9 @@
 // app/src/renderer/config.ts
 
 export interface UiConfig {
+  themeColor: string;
+  userColor: string;
+  toolColor: string;
   typeSpeed: number;
   opacity: number;
   soundVolume: number;
@@ -32,6 +35,9 @@ const defaults: AppConfig = {
     url: "", // プロキシ使用 (/agui/config)
   },
   ui: {
+    themeColor: "#33ff99",
+    userColor: "#64ffff",
+    toolColor: "#ffaa00",
     typeSpeed: 0,
     opacity: 0.7,
     soundVolume: 0,

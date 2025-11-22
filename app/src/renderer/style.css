@@ -3,17 +3,74 @@
   /* OS Standard Terminal Fonts */
   font-family: Consolas, Menlo, monospace;
   font-size: 14px;
-  /* Revert to 14px as standard fonts are more readable */
+
+  /* ----------------------------------------------------------------
+     Theme Variables (Injected via main.ts from settings.json)
+     Default fallbacks are provided here.
+     ---------------------------------------------------------------- */
   
-  /* MGS Codec Theme Colors */
-  --term-green: #33ff99; /* SpringGreen/MediumAquamarine inspired, slightly greener */
+  /* Theme Base (SpringGreen: #33ff99 -> 51, 255, 153) */
+  --theme-color-r: 51;
+  --theme-color-g: 255;
+  --theme-color-b: 153;
+
+  /* User Base (Cyan: #64ffff -> 100, 255, 255) */
+  --user-color-r: 100;
+  --user-color-g: 255;
+  --user-color-b: 255;
+
+  /* Tool Base (Orange: #ffaa00 -> 255, 170, 0) */
+  --tool-color-r: 255;
+  --tool-color-g: 170;
+  --tool-color-b: 0;
+
+  /* Error Base (Red: #ff6666 -> 255, 102, 102) - Fixed */
+  --error-color-r: 255;
+  --error-color-g: 102;
+  --error-color-b: 102;
+
+  /* ----------------------------------------------------------------
+     Derived Colors (Computed from base variables)
+     ---------------------------------------------------------------- */
+
+  /* Theme Colors */
+  --col-theme-main: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 1);
+  --col-theme-text: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.95);
+  --col-theme-dim:  rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.7);
+  --col-theme-bg:   rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.1);
   
-  /* Stronger, multi-layer glow for CRT effect */
-  --term-glow-text: 0 0 3px rgba(51, 255, 153, 0.6), 0 0 12px rgba(51, 255, 153, 0.4);
-  --term-glow-box: 0 0 3px rgba(51, 255, 153, 0.4), 0 0 8px rgba(51, 255, 153, 0.2);
+  /* User Colors */
+  --col-user-text: rgba(var(--user-color-r), var(--user-color-g), var(--user-color-b), 0.95);
+
+  /* Tool Colors */
+  --col-tool-text: rgba(var(--tool-color-r), var(--tool-color-g), var(--tool-color-b), 0.9);
+
+  /* Borders */
+  --col-border-main: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.5);
+  --col-border-high: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.8);
+  
+  /* Backgrounds (Panels) */
+  /* Note: Panel BG is kept as dark tint of theme color or fixed dark depending on preference. */
+  /* MGS Style: Very dark tint of theme color */
+  --col-panel-bg: rgba(0, 20, 10, 0.3); /* Still hardcoded for aesthetic balance, or can be derived */
+  
+  /* Image Background (Derived from theme) */
+  --col-img-bg: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.1);
+
+  /* Glow Effects */
+  --glow-text: 
+    0 0 3px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.6), 
+    0 0 12px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.4);
+  
+  --glow-box: 
+    0 0 3px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.4), 
+    0 0 8px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.2);
+
+  /* Opacity Variable (Injected via main.ts, default 0.7) */
+  --ui-opacity: 0.7;
 }
 
-/* --- Metal Gear Solid inspired Scanlines --- */
+/* --- Scanlines --- */
 .app::after {
   content: "";
   position: absolute;
@@ -35,79 +92,58 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: rgba(0, 0, 0, 0.0); /* 完全透過：デスクトップが見えるはず */
-  color: var(--term-green);
-  text-shadow: var(--term-glow-text);
+  background: rgba(0, 0, 0, 0.0); /* Transparent for desktop see-through */
+  color: var(--col-theme-main);
+  text-shadow: var(--glow-text);
 }
 
 .app {
   display: grid;
-  background: rgba(0, 0, 0, 0.7); /* アプリ背景：半透明の黒 */
+  background: rgba(0, 0, 0, var(--ui-opacity)); /* App Background via CSS Variable */
   grid-template-columns: 1fr 170px;
-  /* アバター枠をスリム化 (220px -> 170px) */
   grid-template-rows: 1fr auto auto;
-  /* Output(flex), Input(auto), Meta(auto) */
-  column-gap: 10px; /* アバターとの横ギャップを入力行と揃える */
-  row-gap: 10px; /* 出力と入力の間に余白を確保 */
+  column-gap: 10px;
+  row-gap: 10px;
   height: 100vh;
   min-width: 600px;
-  min-height: 360px; /* 縦方向をややコンパクトに許容 */
+  min-height: 360px;
   padding: 20px;
-  padding-top: 32px; /* 上部の余白を減らし、罫線との距離を詰める */
+  padding-top: 32px;
   box-sizing: border-box;
   position: relative;
-  /* 線の配置基準 */
 }
 
-/* デザイン罫線（疑似要素で表現） */
+/* Top Border Line */
 .app::before {
   content: "";
   position: absolute;
-  top: 16px; /* 罫線をやや上に寄せる */
+  top: 16px;
   left: 20px;
   right: 20px;
   height: 3px;
-  background: rgba(51, 255, 153, 0.8);
-  box-shadow: 0 0 6px rgba(51, 255, 153, 0.6); /* 罫線も強く発光 */
+  background: var(--col-border-high);
+  box-shadow: var(--glow-text); /* Reuse text glow for strong line glow */
 }
 
-/* フレームレス時にドラッグできる領域を広く確保 */
-.app {
-  -webkit-app-region: drag;
-}
-#pane-output,
-#pane-input,
-#pane-avatar,
-.meta-bar,
-input,
-.text-scroll {
-  -webkit-app-region: no-drag;
-}
+/* Frameless Drag Region */
+.app { -webkit-app-region: drag; }
+#pane-output, #pane-input, #pane-avatar, .meta-bar, input, .text-scroll { -webkit-app-region: no-drag; }
 
-.app:not(.split) #pane-avatar {
-  display: none;
-}
+.app:not(.split) #pane-avatar { display: none; }
 
 /* Left Column: Output Area */
 #pane-output {
   grid-column: 1 / 2;
   grid-row: 1 / 2;
-  border: 1px solid rgba(51, 255, 153, 0.5);
-  box-shadow: var(--term-glow-box);
-  background: rgba(0, 20, 10, 0.2); /* 少し青みを混ぜる */
+  border: 1px solid var(--col-border-main);
+  box-shadow: var(--glow-box);
+  background: var(--col-panel-bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.surface-host {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.surface {
+.surface-host, .surface {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -122,59 +158,46 @@ input,
   overflow-y: auto;
   overflow-x: hidden;
   white-space: pre-wrap;
-  line-height: 1.4; /* 少しタイトにして情報量を増やす */
-  color: rgba(51, 255, 153, 0.9);
+  line-height: 1.4;
+  color: var(--col-theme-text);
   min-height: 0;
 }
 
-.text-line {
-  margin: 0 0 8px; /* 段落間も少し詰める */
-}
+.text-line { margin: 0 0 8px; }
+.text-line strong { color: var(--col-theme-main); }
 
-.text-line strong {
-  color: var(--term-green);
-}
-
-.text-line--system {
-  color: rgba(51, 255, 153, 0.7);
-}
+.text-line--system { color: var(--col-theme-dim); }
 
 .text-line--error {
-  color: #ff6666;
+  color: rgba(var(--error-color-r), var(--error-color-g), var(--error-color-b), 1);
 }
 
 .text-line--proposed {
-  color: rgba(51, 255, 153, 0.85);
+  color: var(--col-theme-text);
   font-family: Consolas, Menlo, monospace;
   background: rgba(0, 20, 10, 0.4);
   padding: 8px;
-  border: 1px solid rgba(51, 255, 153, 0.3);
+  border: 1px solid rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.3);
 }
 
-.text-line--user {
-  color: rgba(100, 255, 255, 0.95); /* ユーザーはより青く */
-}
-
-.text-line--assistant {
-  color: rgba(51, 255, 153, 0.95);
-}
-
-.text-line--tool {
-  color: rgba(0, 180, 255, 0.9);
+.text-line--user { color: var(--col-user-text); }
+.text-line--assistant { color: var(--col-theme-text); }
+.text-line--tool { 
+  color: var(--col-tool-text);
   font-style: italic;
 }
 
 /* Left Column: Input Area */
 #pane-input {
-  grid-column: 1 / 3; /* 入力を全幅に拡張（アバターまで貫通） */
+  grid-column: 1 / 3;
   grid-row: 2 / 3;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid rgba(51, 255, 153, 0.5);
-  box-shadow: var(--term-glow-box);
-  background: rgba(0, 20, 10, 0.3);
+  border: 1px solid var(--col-border-main);
+  box-shadow: var(--glow-box);
+  background: var(--col-panel-bg);
 }
 
 #input {
@@ -189,10 +212,10 @@ input,
 /* Right Column: Avatar Area */
 #pane-avatar {
   grid-column: 2 / 3;
-  grid-row: 1 / 2; /* 出力エリアと同じ高さに揃える */
-  border: 1px solid rgba(51, 255, 153, 0.5);
-  box-shadow: var(--term-glow-box);
-  background: rgba(0, 40, 20, 0.25);
+  grid-row: 1 / 2;
+  border: 1px solid var(--col-border-main);
+  box-shadow: var(--glow-box);
+  background: rgba(0, 40, 20, 0.25); /* Slightly different BG for avatar */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -205,10 +228,12 @@ input,
 #avatar-img {
   width: 140px;
   height: 140px;
-  border: 1px solid rgba(51, 255, 153, 0.6);
-  box-shadow: var(--term-glow-box);
-  background: rgba(51, 255, 153, 0.1);
+  border: 1px solid var(--col-border-main);
+  box-shadow: var(--glow-box);
+  background: var(--col-img-bg);
   object-fit: cover;
+  opacity: var(--ui-opacity); /* Sync with app opacity */
+  mix-blend-mode: screen; /* Blend with the background for hologram look */
 }
 
 .avatar-label {
@@ -223,6 +248,6 @@ input,
   display: flex;
   justify-content: flex-end;
   font-size: 12px;
-  color: rgba(51, 255, 153, 0.7);
-  margin-top: -6px; /* メタバーをアバターの下線に寄せる微調整 */
+  color: var(--col-theme-dim);
+  margin-top: -6px;
 }
