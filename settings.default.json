@@ -6,8 +6,8 @@
     "logBackupCount": 3
   },
   "ui": {
-    "theme": "retro-green",
     "typeSpeed": 30,
+    "opacity": 0.7,
     "soundVolume": 0.5,
     "mouthInterval": 120,
     "beepFrequency": 600,

@@ -1,8 +1,8 @@
 // app/src/renderer/config.ts
 
 export interface UiConfig {
-  theme: string;
   typeSpeed: number;
+  opacity: number;
   soundVolume: number;
   mouthInterval: number;
   beepFrequency: number;
@@ -32,8 +32,8 @@ const defaults: AppConfig = {
     url: "", // プロキシ使用 (/agui/config)
   },
   ui: {
-    theme: "loading...",
     typeSpeed: 0,
+    opacity: 0.7,
     soundVolume: 0,
     mouthInterval: 0,
     beepFrequency: 0,

@@ -44,6 +44,16 @@ async function initApp() {
   // アバター枠内のラベルはエージェント名 (設定連動)
   avatarLabel.textContent = config.ui.nameTags.avatar;
 
+  // 透過設定を適用
+  if (config.ui.opacity !== undefined) {
+    document.body.style.backgroundColor = `rgba(0, 0, 0, 0.0)`; // bodyは完全透過
+    const appEl = document.querySelector('.app') as HTMLElement;
+    if (appEl) {
+      // 設定値が 0.7 なら、rgba(0,0,0,0.7) を適用
+      appEl.style.backgroundColor = `rgba(0, 0, 0, ${config.ui.opacity})`;
+    }
+  }
+
   // 3. UIエンジン (Game Loop) の初期化
   // これひとつでタイプライター・アニメーション・音声すべてを制御する
   const engine = new TerminalEngine(outputEl, avatarImg);

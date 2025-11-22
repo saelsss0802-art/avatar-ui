@@ -10,6 +10,7 @@ function createWindow() {
     frame: false,    // ネイティブタイトルバーを除去
     transparent: true,
     backgroundColor: '#00000000',
+    hasShadow: false, // 透過ウィンドウの影を削除（アーティファクト防止）
     webPreferences: {
       nodeIntegration: false,      // ✅ 安全設定: Node機能無効
       contextIsolation: true,      // ✅ 安全設定: コンテキスト分離
