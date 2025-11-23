@@ -53,7 +53,7 @@
    - [x] 警告ログやエラーでの強制は行わない  
 3. [x] **HTTP/運用ガード**  
    - [x] `/healthz` で APIキー存在＋モデル可用性チェック  
-   - [x] `root_path` / `X-Forwarded-*` 対応を追加  
+   - [x] `root_path` / `X-Forwarded-*` はElectronローカル専用のため不要と判断し削除（CORSはlocalhost開発用のみ維持）  
 4. [ ] **ログ/エラー統一 & PII対策**  
    - [ ] 共通例外ハンドラ・共通ログフォーマット  
    - [ ] リクエストボディ全量ログをデフォルトOFF、`APP_ENV=dev` 等のフラグでONを許容  
