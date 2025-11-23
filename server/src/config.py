@@ -18,6 +18,12 @@ ENV_PATH = ROOT_DIR / ".env"
 # .env を環境変数として読み込む（従来挙動を維持）
 load_dotenv(ENV_PATH)
 
+# CORS のデフォルト（dev用）
+DEFAULT_ALLOWED_ORIGINS_DEV = [
+    "http://localhost:{port}",
+    "http://127.0.0.1:{port}",
+]
+
 # ---------- Pydantic モデル定義 ----------
 
 class NameTags(BaseModel, extra="forbid"):
@@ -64,7 +70,6 @@ class EnvSettings(BaseSettings):
     server_host: str = Field(alias="SERVER_HOST")
     server_port: int = Field(alias="SERVER_PORT", ge=1, le=65535)
     client_port: int = Field(alias="CLIENT_PORT", ge=1, le=65535)
-
     @field_validator("google_api_key", "ag_ui_agent_name", "server_host")
     @classmethod
     def non_empty(cls, v: str, info):
@@ -123,11 +128,14 @@ AG_UI_AGENT_NAME = env_settings.ag_ui_agent_name
 SERVER_HOST = env_settings.server_host
 SERVER_PORT = env_settings.server_port
 CLIENT_PORT = env_settings.client_port
-
-CORS_ORIGINS: List[str] = [
-    f"http://localhost:{CLIENT_PORT}",
-    f"http://127.0.0.1:{CLIENT_PORT}",
-]
+# CORS origins:
+# - デフォルト: dev 用に localhost/127.0.0.1:CLIENT_PORT を許可
+# - 本番で別オリジンを許可したい場合だけ .env の ALLOWED_ORIGINS をカンマ区切りで指定
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    CORS_ORIGINS: List[str] = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+else:
+    CORS_ORIGINS: List[str] = [o.format(port=CLIENT_PORT) for o in DEFAULT_ALLOWED_ORIGINS_DEV]
 
 LLM_MODEL = app_settings.server.llmModel
 SYSTEM_PROMPT = app_settings.server.systemPrompt

@@ -81,6 +81,19 @@ def get_config():
 
 add_adk_fastapi_endpoint(app, agent, path="/agui")
 
+@app.get("/healthz")
+async def healthz():
+    """
+    ヘルスチェック: APIキー有無とモデル可用性の簡易確認。
+    """
+    # APIキー必須
+    if not config.GOOGLE_API_KEY:
+        return JSONResponse(status_code=500, content={"status": "fail", "reason": "missing GOOGLE_API_KEY"})
+    # モデル名が設定されているかのみチェック（外部APIコールは行わない）
+    if not config.LLM_MODEL:
+        return JSONResponse(status_code=500, content={"status": "fail", "reason": "missing LLM_MODEL"})
+    return {"status": "ok", "model": config.LLM_MODEL}
+
 @app.get("/")
 def root():
     return {"status": "ok", "endpoint": "/agui"}
