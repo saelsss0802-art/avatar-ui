@@ -13,70 +13,76 @@ Google Gemini (Google ADK) をバックエンドに使用し、Electron で動�
 *   **Electron アプリ**: Windows, Mac, Linux で動作するデスクトップアプリケーション。
 *   **開発者フレンドリー**: AG-UI プロトコル準拠。Python (FastAPI) と TypeScript (Electron) の分離構成で拡張が容易。
 
-## 🚀 クイックスタート（開発者向け）
-
-ソースコードをクローンして、開発モードで起動する手順です。
+## 🚀 クイックスタート（開発者向け：最新手順）
 
 ### 1. 前提条件
-*   Node.js (v20以上推奨)
-*   Python (v3.12以上推奨)
-*   Google Gemini API Key ([取得はこちら](https://aistudio.google.com/app/apikey))
+- Node.js 20+
+- Python 3.12+
+- Google Gemini API Key（[取得](https://aistudio.google.com/app/apikey)）
 
-### 2. インストール
-
+### 2. 環境変数をリポジトリルートに `.env` として用意
 ```bash
-# リポジトリをクローン
-git clone https://github.com/avatar-ui/sito-dev-019.git avatar-ui
-cd avatar-ui
+GOOGLE_API_KEY=your_api_key_here
+AG_UI_AGENT_NAME=google-adk-agent
+SERVER_HOST=localhost
+SERVER_PORT=8000
+CLIENT_PORT=5173
+# 環境モード（dev|prod）。devでは詳細ログやボディログを許可しやすくする想定
+APP_ENV=dev
+# ボディ全量ログを開発時だけ有効にしたい場合（任意）
+# LOG_BODY=true
+```
+※ `vite.config.ts` は親ディレクトリの `.env` を読むため、`app/.env` は不要です。
 
-# クライアント依存パッケージのインストール
+### 3. サーバーセットアップ & 起動
+```bash
+cd server
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install .
+# いずれかでポートを渡す（.env はシェルに自動では読み込まれない）
+# A) .env を読み込んでから環境変数で渡す
+. ../.env  # または export $(cat ../.env | xargs)
+uvicorn main:app --reload --host 0.0.0.0 --port "$SERVER_PORT"
+# B) 単純にポート番号を直指定
+# uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+設定値は `settings.json`（なければ `settings.default.json`）から読み込みます。LLM モデルやプロンプトを変更したい場合は `settings.json` を編集してください。
+
+### 4. クライアントセットアップ & 起動
+```bash
 cd app
 npm install
+npm run dev   # Vite + Electron が同時起動し、/agui をサーバーにプロキシ
 ```
 
-### 3. サーバー設定
-
-```bash
-# サーバーディレクトリへ移動
-cd ../server
-
-# 仮想環境の作成と有効化
-python3 -m venv .venv
-# Windows: .venv\Scripts\activate
-# Mac/Linux: source .venv/bin/activate
-
-# 依存ライブラリのインストール
-pip install .
-
-# 環境変数の設定
-cp .env.example .env
-# .env を開き、GOOGLE_API_KEY にキーを入力してください
-```
-
-### 4. 起動
-
-クライアントとサーバーを同時に起動します。
-
-```bash
-# アプリディレクトリで実行
-cd ../app
-npm run dev
-```
-
-アプリが起動し、チャットが可能になります。
-
-## 📦 配布用パッケージのビルド
-
-エンドユーザー向けに `.exe` や `.dmg` ファイルを作成する場合の手順です。
-
+### 5. 配布用ビルド
 ```bash
 cd app
-npm run build    # ビルド
-npm run package  # パッケージ作成
+npm run build     # renderer ビルド
+npm run package   # electron-builder でパッケージ生成
 ```
+成果物は `app/dist/` 配下に出力されます。
 
-`app/dist/` フォルダにインストーラーが生成されます。
-Github Releases などで配布することを推奨します。
+## モデルとツールの互換性について
+- 推奨ペア: **Gemini 2.x/3.x 系 + Google Search ツール**（仕様は頻繁に更新されるため要確認）
+- Google Search ツールがサポートするモデルの例（2025-11-23 時点）  
+  - gemini-3-pro-preview, gemini-3-pro-image-preview  
+  - gemini-2.5-pro / gemini-2.5-flash / gemini-2.5-flash-lite  
+  - gemini-2.0-flash-001 など  
+  ※最新の対応モデルは公式ドキュメントを参照してください。citeturn0search1
+- 公式一次情報: Google ADK Built-in Tools（Google Search ツールの対応モデルと制約を確認）  
+  https://google.github.io/adk-docs/tools/built-in-tools/
+
+
+## 公式ドキュメントへのリンク
+- AG-UI Protocol / SDK: https://docs.ag-ui.com/
+- ADK Middleware (upstream サンプル): https://github.com/ag-ui-protocol/ag-ui/tree/main/typescript-sdk/integrations/adk-middleware
+※ 本リポジトリの server/ 配下ドキュメントは削除し、最新情報は上記公式ソースを参照してください。
+
+## セッション保持について（短期記憶）
+- サーバのセッションはメモリ上で保持しており、**サーバ再起動で会話履歴・ツール結果の待ち状態は消えます**（短期記憶のみ）。  
+- 長期記憶（永続化）を行いたい場合は、別途ストレージ連携やセッション永続化を検討してください。
 
 ## 🛠️ カスタマイズ
 

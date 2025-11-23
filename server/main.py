@@ -42,6 +42,8 @@ agent = ADKAgent(
     app_name="agents",
     user_id="cli_user",
     use_in_memory_services=True,
+    session_timeout_seconds=config.SESSION_TIMEOUT_SECONDS,
+    cleanup_interval_seconds=config.CLEANUP_INTERVAL_SECONDS,
 )
 
 app = FastAPI(title="AG-UI ADK Bridge")
