@@ -59,15 +59,16 @@
 
   /* Glow Effects */
   --glow-text: 
-    0 0 3px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.6), 
-    0 0 12px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.4);
+    0 0 3px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), var(--glow-text-alpha1)),
+    0 0 12px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), var(--glow-text-alpha2));
   
   --glow-box: 
-    0 0 3px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.4), 
-    0 0 8px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.2);
+    0 0 3px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), var(--glow-box-alpha1)),
+    0 0 8px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), var(--glow-box-alpha2));
 
   /* Opacity Variable (Injected via main.ts, default 0.7) */
   --ui-opacity: 0.7;
+  --ui-brightness: 1;
 }
 
 /* --- Scanlines --- */
@@ -141,6 +142,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  filter: brightness(var(--ui-brightness));
 }
 
 .surface-host, .surface {
@@ -198,6 +200,7 @@ body {
   border: 1px solid var(--col-border-main);
   box-shadow: var(--glow-box);
   background: var(--col-panel-bg);
+  filter: brightness(var(--ui-brightness));
 }
 
 #input {
@@ -225,15 +228,32 @@ body {
   gap: 12px;
 }
 
-#avatar-img {
+#avatar-wrap {
+  position: relative;
   width: 140px;
   height: 140px;
-  border: 1px solid var(--col-border-main);
   box-shadow: var(--glow-box);
+  border: 1px solid var(--col-border-main);
   background: var(--col-img-bg);
+}
+
+#avatar-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--col-theme-main);
+  mix-blend-mode: multiply;
+  opacity: var(--avatar-overlay-opacity);
+  pointer-events: none;
+}
+
+#avatar-img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  display: block;
   opacity: var(--ui-opacity); /* Sync with app opacity */
-  mix-blend-mode: screen; /* Blend with the background for hologram look */
+  filter: brightness(var(--avatar-brightness));
 }
 
 .avatar-label {

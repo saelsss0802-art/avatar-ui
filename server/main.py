@@ -79,7 +79,7 @@ def get_config():
     UI用の設定を返すエンドポイント。
     Server設定(config.py)から、UIに必要な部分だけを抽出して返す。
     """
-    # UI設定に加えて、クライアント側ログ詳細フラグとエージェント接続情報も返す
+    # UI設定に加えて、クライアント側ログの詳細可否フラグとエージェント接続情報も返す
     return {
         "ui": config._ui_settings,
         "clientLogVerbose": config.CLIENT_LOG_VERBOSE,

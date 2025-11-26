@@ -38,9 +38,6 @@ class SystemMessages(BaseModel, extra="forbid"):
 
 
 class UiSettings(BaseModel, extra="forbid"):
-    themeColor: str
-    userColor: str
-    toolColor: str
     typeSpeed: int
     opacity: float
     soundVolume: float
@@ -48,8 +45,22 @@ class UiSettings(BaseModel, extra="forbid"):
     beepFrequency: int
     beepDuration: float
     beepVolumeEnd: float
+    avatarOverlayOpacity: float
+    avatarBrightness: float
+    brightness: float
+    glowText: float
+    glowBox: float
     nameTags: NameTags
     systemMessages: SystemMessages
+    theme: str = "classic"
+    themes: List["ThemePreset"] | None = None
+
+
+class ThemePreset(BaseModel, extra="forbid"):
+    name: str
+    themeColor: str
+    userColor: str
+    toolColor: str
 
 
 class ServerSettings(BaseModel, extra="forbid"):
@@ -62,6 +73,26 @@ class ServerSettings(BaseModel, extra="forbid"):
 class AppSettings(BaseModel, extra="forbid"):
     server: ServerSettings
     ui: UiSettings
+
+
+# ---------- テーマ解決 ----------
+
+def resolve_theme(ui: UiSettings) -> dict:
+    """
+    テーマプリセットを解決し、実際に使う色を決定する。
+    - ui.theme で指定されたプリセットがあればそれを基準にする
+    - 個別指定（themeColor など）があればプリセットより優先する
+    """
+    resolved = ui.model_dump()
+    if ui.themes:
+        for preset in ui.themes:
+            if preset.name == ui.theme:
+                resolved["themeColor"] = preset.themeColor
+                resolved["userColor"] = preset.userColor
+                resolved["toolColor"] = preset.toolColor
+                break
+    resolved.pop("themes", None)
+    return resolved
 
 
 class EnvSettings(BaseSettings):
@@ -157,7 +188,7 @@ SESSION_TIMEOUT_SECONDS = env_settings.session_timeout_seconds
 CLEANUP_INTERVAL_SECONDS = env_settings.cleanup_interval_seconds
 
 # FastAPI の /agui/config で返すために dict で保持
-_ui_settings = app_settings.ui.model_dump()
+_ui_settings = resolve_theme(app_settings.ui)
 
 # クライアントのログ詳細可否（サーバ設定と連動）
 CLIENT_LOG_VERBOSE = (APP_ENV == "dev") or (LOG_BODY is True)

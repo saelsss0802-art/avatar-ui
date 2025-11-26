@@ -6,9 +6,32 @@
     "logBackupCount": 3
   },
   "ui": {
-    "themeColor": "#33ff99",
-    "userColor": "#64ffff",
-    "toolColor": "#ffaa00",
+    "theme": "classic",
+    "themes": [
+      {
+        "name": "classic",
+        "themeColor": "#00ff66",
+        "userColor": "#64ffff",
+        "toolColor": "#ffaa00"
+      },
+      {
+        "name": "future",
+        "themeColor": "#5ad1ff",
+        "userColor": "#9efc6a",
+        "toolColor": "#ff66c4"
+      },
+      {
+        "name": "modern",
+        "themeColor": "#7b6cff",
+        "userColor": "#4dd0e1",
+        "toolColor": "#ffb74d"
+      }
+    ],
+    "avatarOverlayOpacity": 1.0,
+    "avatarBrightness": 1.0,
+    "glowText": 1.0,
+    "glowBox": 1.0,
+    "brightness": 1.0,
     "typeSpeed": 30,
     "opacity": 0.75,
     "soundVolume": 0.5,

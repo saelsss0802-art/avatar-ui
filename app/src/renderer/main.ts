@@ -97,6 +97,25 @@ async function initApp() {
     root.style.setProperty("--ui-opacity", String(config.ui.opacity));
   }
 
+  // アバターオーバーレイの濃さ（テーマ色で着色）
+  if (config.ui.avatarOverlayOpacity !== undefined) {
+    root.style.setProperty("--avatar-overlay-opacity", String(config.ui.avatarOverlayOpacity));
+  }
+  if (config.ui.avatarBrightness !== undefined) {
+    root.style.setProperty("--avatar-brightness", String(config.ui.avatarBrightness));
+  }
+  if (config.ui.glowText !== undefined) {
+    root.style.setProperty("--glow-text-alpha1", String(0.6 * config.ui.glowText));
+    root.style.setProperty("--glow-text-alpha2", String(0.4 * config.ui.glowText));
+  }
+  if (config.ui.glowBox !== undefined) {
+    root.style.setProperty("--glow-box-alpha1", String(0.4 * config.ui.glowBox));
+    root.style.setProperty("--glow-box-alpha2", String(0.2 * config.ui.glowBox));
+  }
+  if (config.ui.brightness !== undefined) {
+    root.style.setProperty("--ui-brightness", String(config.ui.brightness));
+  }
+
   // 3. UIエンジン (Game Loop) の初期化
   // これひとつでタイプライター・アニメーション・音声すべてを制御する
   const engine = new TerminalEngine(outputEl, avatarImg);
