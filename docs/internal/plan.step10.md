@@ -96,29 +96,67 @@
 ## Phase 3: Client Renderer（雛形）
 - 対象: `app/src/renderer/`, `engine/TerminalEngine`
 - 目的/観点: DOM 操作最小化、描画ループ効率化、CSS変数と設定値の紐付け整理、設定のSSOT/DRY、Fail-Fast、ノイズ削減
-- 既知の課題とマイクロタスク（案：要すり合わせ後に着手順・具体策を確定）
-  1. [ ] 設定→CSS変数のマッピング集約（SSOT/DRY）  
-     - `/agui/config` で受け取る UI設定を1か所の関数でCSS変数に反映する仕組みを作る。  
-  2. [ ] DOM操作の集約・ヘルパ化  
-     - CSS変数の適用、テキスト行追加などをヘルパ関数にまとめ、重複/散在を解消。  
-  3. [ ] 描画ループの効率化（タイピング演出を維持）  
-     - スクロール更新・行追加などの再描画トリガーを1か所に集約し、不要な二重更新を削減。  
-  4. [ ] 設定バリデーション（Fail-Fast）  
-     - `/agui/config` 取得後に必須フィールドを軽量チェックし、欠損時は即エラー表示。  
-  5. [ ] ログ出力の最小化  
-     - clientLogVerbose フラグで console 出力を統一し、通常は静かに。  
-  6. [ ] CSS変数マップ化  
-     - 設定キー ↔ CSS変数名の対応表をマップで管理し、一括適用・未設定スキップを可能に。  
-  7. [ ] バージョン等の外部情報参照点の一本化  
-     - package.json 直 import をやめ、1か所に集約（環境変数 or config配信）。  
-  8. [ ] 初期化ステップの関数分割・可視化  
-     - 設定取得／UI適用／エージェント生成を小さく分け、失敗時にどこで止まったか明示。  
+- 実施結果と判断
+  1. [x] 設定→CSS変数のマッピング集約（SSOT/DRY）  
+     - `/agui/config` の UI設定を1か所で CSS 変数に反映。テーマ/グロー/明るさ/オーバーレイを設定駆動化。
+  2. [■] DOM操作の集約・ヘルパ化  
+     - 200行程度で直線的・十分可読。ヘルパ化は効果薄と判断しスキップ。
+  3. [■] 描画ループの効率化（タイピング演出維持）  
+     - TerminalEngine は rAF でシンプルに実装済み、重複更新なし。最適化は不要と判断。
+  4. [■] 設定バリデーション（Fail-Fast）  
+     - サーバ側で Pydantic により厳格バリデーション済み。クライアント重複チェックは不要と判断。
+  5. [x] ログ出力の最小化  
+     - clientLogVerbose で制御済み（loggerSubscriberで適用済み）。追加作業なし。
+  6. [■] CSS変数マップ化  
+     - 現状可読性十分、抽象化のリターン小と判断しスキップ。
+  7. [■] バージョン等参照点の一本化  
+     - Vite が package.json を解決しており問題なし。環境変数化は YAGNI と判断しスキップ。
+  8. [■] 初期化ステップの関数分割・可視化  
+     - initApp は既にエラー処理含めシンプル。現状維持、必要になった時に分割検討。
 
-※ 上記は実装前のラフ案。具体策はすり合わせ後に確定する。
+凡例: [x]=完了, [■]=不要と判断（スキップ）
 
-## Phase 4: Electron Main & Packaging（雛形）
-- 対象: `app/src/main/`, ビルド/配布設定
-- 目的/観点: セキュリティフラグ（contextIsolation等）の監査、ビルド出力の最小化、配布物への不要同梱削減
-- 既知の一致点/論点: 未整理（後続で記載）
-- 相違点/要調査: 未整理（後続で記載）
-- micro-task 前提: 未策定（後続で策定）
+## Phase 4: Electron Main & Packaging
+- 対象: `app/src/main/`, `app/src/renderer/index.html`, ビルド/配布設定
+- 目的/観点: セキュリティフラグ監査、ビルド出力の最小化、配布物への不要同梱削減
+- 現状評価: 基本的なセキュリティ（nodeIntegration:false, contextIsolation:true）は実装済み。追加強化と設定明示化が必要。
+
+## Phase 4: マイクロタスク（チェックボックス）
+
+1. [ ] **sandbox 有効化（セキュリティ強化）**
+   - [ ] `app/src/main/index.ts` の webPreferences に `sandbox: true` を追加
+   - [ ] 動作確認：アプリ起動・基本操作に問題がないこと
+   - 理由: contextIsolation と組み合わせることで、レンダラープロセスをより安全に分離
+
+2. [ ] **CSP（Content Security Policy）設定**
+   - [ ] `app/src/renderer/index.html` の `<head>` に以下を追加:
+     ```html
+     <meta http-equiv="Content-Security-Policy" 
+           content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+     ```
+   - [ ] 動作確認：UI表示・エージェント通信に問題がないこと
+   - 備考: 外部API呼び出しはサーバー側で行うため、`'self'` のみで副作用なし
+
+3. [ ] **electron-builder 設定の明示化**
+   - [ ] `app/electron-builder.yml` を新規作成:
+     ```yaml
+     appId: com.avatar-ui.app
+     productName: avatar-ui
+     directories:
+       output: dist
+     asar: true
+     mac:
+       target: [dmg, zip]
+       electronLanguages: [ja, en]
+     ```
+   - [ ] ビルド実行して正常にパッケージ化されることを確認
+   - [ ] DMGサイズが削減されていることを確認（目安: 108MB → 100MB程度）
+   - 備考: node_modules は含める（vite-plugin-electron のデフォルト動作を維持）
+
+4. [ ] **本番でDevToolsを確実に無効化し、開発時のみ .env で制御**
+   - [ ] dev判定: `VITE_DEV_SERVER_URL` の有無で dev/prod を分岐
+   - [ ] dev時のみ dotenv を読み、`APP_ENV/OPEN_DEVTOOLS/ELECTRON_WARNINGS` を有効化
+   - [ ] webPreferences.devTools を dev に連動（prod は false 固定）
+   - [ ] 本番ビルドでは .env を同梱しない、dotenv も読まない
+
+凡例: [x]=完了, [ ]=未着手

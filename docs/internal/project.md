@@ -104,3 +104,15 @@
   - 例: 角丸や別フォント、アンバーCRT風エフェクトなどを個別に付与
 - 現時点では開発コストが見合わないためペンディング。カラー差分のみを維持する。
 
+### Electron/app 設定ロードの将来拡張メモ
+- 目標: 「開発者が .env で自由に設定」「エンドユーザー配布は常に安全（prod固定）」を両立する。
+- 現状の課題: 本番パッケージで dotenv を読もうとする設計だと、.env 不在で dev 扱いになったり秘密情報混入リスクがある。
+- 解決策（導入時に実装すること）:
+  - dev 判定: `VITE_DEV_SERVER_URL` の有無で dev / prod を分岐。
+  - dev のみ dotenv 読み込み: `if (process.env.VITE_DEV_SERVER_URL) loadEnv(...)`
+  - APP_ENV などは「デフォルト prod」にする: `const APP_ENV = process.env.APP_ENV ?? 'prod'` （他のフラグも同様にデフォルト安全側）
+  - 本番ビルドでは .env を同梱しない / dotenv を読まない。
+  - 秘密情報は本番では環境変数注入 or 将来の設定画面で安全ストア保存に切り替える。
+- 将来の接続設定（local/remote両対応）:
+  - settings.json に `connection.mode: local|remote` と `localHost/localPort/remoteUrl` を追加し、mode に応じて接続先を組み立てる。
+  - APIキーは将来、設定画面で入力→暗号化保存（safeStorage）する。ローカルモードはユーザーキー、リモートモードは公式キー or 不要。
