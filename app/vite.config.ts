@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => {
   const serverUrl = `http://${serverHost}:${serverPort}`
 
   return {
+    define: {
+      __AGUI_BASE__: JSON.stringify(serverUrl),
+    },
     plugins: [
       electron([
         {

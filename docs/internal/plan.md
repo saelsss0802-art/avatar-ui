@@ -51,22 +51,32 @@
 - [x] アバター枠に無線画面風ノイズエフェクト（CSS or 軽量Canvas）を追加し、パフォーマンス影響を検証。
 - [x] 必要に応じてテーマ変数を `settings.json` または `style.css` のCSS変数に整理（最小限）。
 
-## ステップ10：配布前コード整備（リファクタリング）
-**目標**: 配布パッケージに含める「本番ファイル」を特定し、**効率化・合理化・最小化** の観点で徹底的にリファクタリングを行う。
-各フェーズで「1.調査・設計」→「2.コメント付与」→「3.根本リファクタ」のサイクルを回す。
+## ステップ10：配布前コード整備（リファクタリング）（完了）
+**目標**: 配布パッケージを「効率化・合理化・最小化」し、公式仕様とセキュリティ要件に沿った安定基盤を固める。  
+実施結果をフェーズ別に集約。
 
-- [ ] **Phase 1: Server Side (Python/FastAPI/ADK)**
-  - 対象: `server/main.py`, `server/src/config.py`, `server/src/ag_ui_adk/`
-  - 観点: 依存最小化、エラーハンドリング統一(Fail-Fast)、ADK連携の効率化
-- [ ] **Phase 2: Client Core (TypeScript/Shared)**
-  - 対象: `app/src/core/`
-  - 観点: 設定・環境変数の扱い統一、不要ログの排除
-- [ ] **Phase 3: Client Renderer (UI/Engine)**
-  - 対象: `app/src/renderer/`
-  - 観点: Game Loop最適化、DOM操作最小化、CSS変数管理の整理
-- [ ] **Phase 4: Electron Main & Packaging**
-  - 対象: `app/src/main/`, ルートディレクトリ
-  - 観点: セキュリティ設定最終監査、ビルド設定最小化、不要ファイル(docs等)の除外定義
+- [x] **Phase 1: Server Side (Python/FastAPI/ADK)**
+  - Pydantic設定バリデーションを導入し、必須キー・型・未使用キーを起動時 Fail-Fast。
+  - `/healthz` を追加し、APIキー存在とモデル可用性チェックを実装。
+  - ログ/例外ハンドラを統一、PII 保護のためボディ全量ログはデフォルトOFF（`APP_ENV=dev` 等で opt-in）。
+  - セッション/HITL設定を外出し（`SESSION_TIMEOUT_SECONDS`, `CLEANUP_INTERVAL_SECONDS`）、短期記憶である旨を明記。
+  - 依存肥大（GCP heavy）は課題化のみ、コード変更なし。
+
+- [x] **Phase 2: Client Core (TypeScript/Shared)**
+  - クライアント設定の取得経路を `/agui/config` に一本化。`__AGUI_BASE__` をビルド時に注入し、prod（file://）でも `127.0.0.1:8000` へ到達可能に。
+  - Vite 固有の `VITE_...` 環境変数依存を排除、`.env` は開発時のみ読み込む方針に整理。
+  - 不要ログは `clientLogVerbose` で制御済み。
+
+- [x] **Phase 3: Client Renderer (UI/Engine)**
+  - テーマを Classic / Cobalt / Amber の3色に統合。`settings.json` をSSOT化し、CSS変数・グロー・明るさ・アバターオーバーレイ/明度を設定駆動化。
+  - アバターはモノクロ素材＋色オーバーレイに変更し、テーマ切替対応。画像パスを相対化し、prodパッケージでの 404 を解消。
+  - DOM/描画ループ最適化は現行実装が十分効率的と判断しスキップ（YAGNI）。
+
+- [x] **Phase 4: Electron Main & Packaging**
+  - セキュリティ強化: `sandbox:true`, `contextIsolation:true`, `nodeIntegration:false`, CSP明示（img/media/data/blob/https、connectは localhost/127.0.0.1/https/ws/wss）。
+  - DevTools/警告の制御: 開発時のみ dotenv 読み込み、`APP_ENV` デフォルト prod、`ELECTRON_WARNINGS` 三段ロジック、`webPreferences.devTools` は dev のみ有効。
+  - パッケージ最小化: `electron-builder.yml` を新規作成し、`dist-electron/**`・`dist/renderer/**`・`package.json` のみ同梱、mac 言語を ja/en に絞り asar 有効。
+  - ビルド結果（arm64）：DMG 112MB / ZIP 113MB を確認。
 
 ## ステップ11：配布パッケージ最終化（ローカル同梱型）
 - [ ] Pythonサーバを各OS向けにバイナリ化（PyInstaller 等）する。

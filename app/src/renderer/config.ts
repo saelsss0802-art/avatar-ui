@@ -1,5 +1,7 @@
 // app/src/renderer/config.ts
 
+declare const __AGUI_BASE__: string; // injected by Vite (vite.config.ts)
+
 export interface UiConfig {
   themeColor: string;
   userColor: string;
@@ -74,8 +76,9 @@ export let config: AppConfig = { ...defaults };
 
 export async function fetchConfig(): Promise<void> {
   try {
-    // プロキシ経由で取得
-    const response = await fetch("/agui/config");
+    // dev: /agui/config (Vite proxy) / prod: http://127.0.0.1:8000/agui/config
+    const base = typeof __AGUI_BASE__ !== "undefined" ? __AGUI_BASE__ : "";
+    const response = await fetch(`${base}/agui/config`);
     if (!response.ok) {
       throw new Error(`Config fetch failed: ${response.status} ${response.statusText}`);
     }
@@ -85,8 +88,9 @@ export async function fetchConfig(): Promise<void> {
     const ui = serverConfig.ui ?? serverConfig;
     const agent = serverConfig.agent ?? defaults.agent;
     config.ui = ui;
+    const agentUrl = agent.url ?? `${base}/agui`;
     config.agent = {
-      url: agent.url ?? "",
+      url: agentUrl,
       agentId: agent.agentId ?? "",
       threadId: agent.threadId ?? "",
     };

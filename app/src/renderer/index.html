@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* https: ws: wss:;"
+    />
     <title>avatar-ui</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
@@ -25,9 +29,9 @@
         <div id="avatar-wrap">
           <img
             id="avatar-img"
-            src="/idle.png"
-            data-idle="/idle.png"
-            data-talk="/talk.png"
+            src="./idle.png"
+            data-idle="./idle.png"
+            data-talk="./talk.png"
             alt="avatar"
           />
         </div>
