@@ -50,24 +50,12 @@
    ```
    - `server/main.py` で `add_adk_fastapi_endpoint(..., path="/agui")` を指定してあるため、`http://localhost:8000/agui` がクライアント用エンドポイントになる。
 
-## 4. 拡張検討メモ（未実装・要議論）
+## 4. MCP連携（検討メモ）
 
-- **マルチLLM切替（OpenAI / Anthropic / Gemini）**
-  - 現状: ADK組み込みの Google Search ツールは Gemini 2 系専用。他プロバイダで使うと `Model ... not found` や `Google search tool is not supported` で失敗する。標準ツールをシームレスに他ベンダーで使う方法は公式に存在しない。
-  - 公式一次情報:
-    - Built-in Tools: Google Search only for Gemini 2 models. citehttps://google.github.io/adk-docs/tools/built-in-tools/
-    - LLMRegistry: OpenAI/Anthropic を使う場合は LiteLlm ラッパで `provider/model` を指定するのが推奨。citehttps://google.github.io/adk-docs/agents/models/
-  - 課題: Google Search を維持したまま他ベンダーへ切替は不可。非Geminiモデルを使うなら検索ツールを外す or 独自実装に差し替える必要がある。
-  - 方針候補（未決定）:
-    - A) Gemini固定（標準ツール活用重視）
-    - B) 非Gemini時は標準検索ツールを外し、代替検索ツールを実装
-    - C) 設定でプロバイダ切替し、ツールも自動で切替（標準検索はGeminiのみ）
-
-- **MCP連携（ツール未定）**
-  - 現状: 未導入。どのMCPサーバ（filesystem/commands/etc.）を採用するか未定。
-  - 公式一次情報:
-    - ADK MCP integration（StdioServerParameters + MCPToolset）。citehttps://cloud.google.com/blog/topics/developers-practitioners/use-google-adk-and-mcp-with-an-external-serverhttps://codelabs.developers.google.com/multi-agent-app-toolbox-adk
-  - 課題: 採用サーバと権限範囲、セキュリティポリシーを決める必要がある。
+- 現状: 未導入。どのMCPサーバ（filesystem/commands/etc.）を採用するか未定。
+- 公式一次情報:
+  - ADK MCP integration（StdioServerParameters + MCPToolset）。citehttps://cloud.google.com/blog/topics/developers-practitioners/use-google-adk-and-mcp-with-an-external-serverhttps://codelabs.developers.google.com/multi-agent-app-toolbox-adk
+- 課題: 採用サーバと権限範囲、セキュリティポリシーを決める必要がある。
 
 ## 5. ディレクトリ構成
 
@@ -116,3 +104,37 @@
 - 将来の接続設定（local/remote両対応）:
   - settings.json に `connection.mode: local|remote` と `localHost/localPort/remoteUrl` を追加し、mode に応じて接続先を組み立てる。
   - APIキーは将来、設定画面で入力→暗号化保存（safeStorage）する。ローカルモードはユーザーキー、リモートモードは公式キー or 不要。
+
+---
+
+## 付録：CLI → Electron GUI 移行の再現メモ（2025-11-19）
+CLI テンプレの AG-UI を Electron + レトロターミナル UI に移植した際の主な問題と解決策（再現性確保のため記録）。
+
+- メッセージ送信の公式準拠  
+  - 誤り: `runAgent({ messages: [] })` で内部キューを空配列上書き → `new_message` エラー。  
+  - 解決: `agent.messages.push(userMessage)` だけ行い、`runAgent()` に `messages` を渡さない。
+
+- UI 層分離（AgentSubscriber パターン）  
+  - コア（agent/logger）と UI（renderer/subscriber/animation）を分離。  
+  - UI 更新は公式推奨の `AgentSubscriber` 実装で行う。
+
+- Electron 開発フロー統合  
+  - `vite-plugin-electron` 採用で `npm run dev` 一発起動（Vite+Electron ホットリロード）。  
+  - `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true` を維持し、必要なら preload で最小権限公開。
+
+- CORS / Vite ルート設定  
+  - FastAPI に CORS を追加（dev: localhost:5173 を許可）。  
+  - `vite.config.ts` で `root: src/renderer`、entry を絶対パス指定、HTML の JS/CSS を相対パス化。
+
+- アバター・テーマ  
+  - Classic / Cobalt / Amber の3テーマを設定駆動化。  
+  - モノクロ素材＋カラーオーバーレイ方式でテーマ切替を実現。
+
+- パッケージング  
+  - `electron-builder.yml` で dist-electron / dist/renderer のみ同梱、mac 言語を ja/en に削減、asar 有効。  
+  - CSP 明示（img/media data/blob/https, connect localhost/127.0.0.1/https/ws/wss）、DevTools は dev のみ。
+
+- 外部要因エラー  
+  - Gemini API の一時的 503 overload は待機・再試行・モデル一時切替で回避（コード変更不要）。
+
+総評: 公式ミドルウェア（AG-UI / Google ADK）への準拠を維持したまま GUI 化を完了。主要リスクは外部APIの過負荷のみ。

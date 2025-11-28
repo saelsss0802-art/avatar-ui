@@ -1,4 +1,4 @@
-import json
+import pyjson5 as json
 import os
 from pathlib import Path
 from typing import List
@@ -10,9 +10,13 @@ from dotenv import load_dotenv
 # プロジェクトルートのパス
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
-# 設定ファイルのパス
-SETTINGS_PATH = ROOT_DIR / "settings.json"
-DEFAULT_SETTINGS_PATH = ROOT_DIR / "settings.default.json"
+# 設定ファイルの候補パス（JSON5に統一）
+SETTINGS_CANDIDATES = [
+    ROOT_DIR / "settings.json5",
+]
+DEFAULT_SETTINGS_CANDIDATES = [
+    ROOT_DIR / "settings.default.json5",
+]
 ENV_PATH = ROOT_DIR / ".env"
 
 # .env を環境変数として読み込む（従来挙動を維持）
@@ -126,16 +130,24 @@ class EnvSettings(BaseSettings):
 
 def load_settings_json() -> AppSettings:
     """
-    settings.json を読み込み、なければ settings.default.json を使う。
+    settings.json5 / settings.json を読み込み、なければ settings.default.json5 / settings.default.json を使う。
     """
-    if SETTINGS_PATH.exists():
-        path_to_load = SETTINGS_PATH
-        print(f"Loading config from: {SETTINGS_PATH}")
-    elif DEFAULT_SETTINGS_PATH.exists():
-        path_to_load = DEFAULT_SETTINGS_PATH
-        print(f"Loading config from: {DEFAULT_SETTINGS_PATH} (Default)")
-    else:
-        raise RuntimeError(f"Config Error: Neither {SETTINGS_PATH} nor {DEFAULT_SETTINGS_PATH} found.")
+    path_to_load = None
+    for cand in SETTINGS_CANDIDATES:
+        if cand.exists():
+            path_to_load = cand
+            print(f"Loading config from: {cand}")
+            break
+    if path_to_load is None:
+        for cand in DEFAULT_SETTINGS_CANDIDATES:
+            if cand.exists():
+                path_to_load = cand
+                print(f"Loading config from: {cand} (Default)")
+                break
+    if path_to_load is None:
+        raise RuntimeError(
+            f"Config Error: None of {SETTINGS_CANDIDATES + DEFAULT_SETTINGS_CANDIDATES} found."
+        )
 
     try:
         with open(path_to_load, "r", encoding="utf-8") as f:
