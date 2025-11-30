@@ -1,3 +1,4 @@
+// Vite + Electron のビルド設定
 import { defineConfig, loadEnv } from 'vite'
 import electron from 'vite-plugin-electron'
 import { resolve } from 'path'
@@ -24,9 +25,11 @@ export default defineConfig(({ mode }) => {
   const serverUrl = `http://${serverHost}:${serverPort}`
 
   return {
+    // レンダラーに注入するグローバル定数
     define: {
-      __AGUI_BASE__: JSON.stringify(serverUrl),
+      __AGUI_BASE__: JSON.stringify(serverUrl), // サーバーのベースURL
     },
+    // Electron メインプロセスのビルド設定
     plugins: [
       electron([
         {
@@ -39,19 +42,20 @@ export default defineConfig(({ mode }) => {
         },
       ]),
     ],
+    // 開発サーバー設定
     server: {
       port: clientPort,
       proxy: {
         '/agui': {
-          target: serverUrl,
+          target: serverUrl,  // AG-UI サーバーへプロキシ
           changeOrigin: true,
         },
       },
     },
-    root: 'src/renderer',
-    publicDir: resolve(__dirname, 'src/renderer/assets'),
+    root: 'src/renderer',                              // レンダラーのルート
+    publicDir: resolve(__dirname, 'src/renderer/assets'), // 静的アセット
     build: {
-      outDir: resolve(__dirname, 'dist/renderer'),
+      outDir: resolve(__dirname, 'dist/renderer'),     // レンダラーの出力先
     },
   }
 })

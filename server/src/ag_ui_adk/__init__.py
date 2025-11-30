@@ -1,9 +1,6 @@
-# src/__init__.py
-
-"""ADK Middleware for AG-UI Protocol
-
-This middleware enables Google ADK agents to be used with the AG-UI protocol.
-"""
+# AG-UI プロトコル用 ADK ミドルウェア
+#
+# Google ADK エージェントを AG-UI プロトコルで使用するためのミドルウェア
 
 from __future__ import annotations
 
@@ -22,7 +19,7 @@ __version__ = "0.1.0"
 
 
 def _configure_logging_from_env() -> None:
-    """Configure component loggers based on environment variables."""
+    """環境変数に基づいてコンポーネントごとのロガーを設定"""
 
     root_level = os.getenv('LOG_ROOT_LEVEL')
     if root_level:

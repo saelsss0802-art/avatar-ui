@@ -1,6 +1,4 @@
-# src/endpoint.py
-
-"""FastAPI endpoint for ADK middleware."""
+# ADK ミドルウェア用 FastAPI エンドポイント
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
@@ -13,28 +11,28 @@ logger = logging.getLogger(__name__)
 
 
 def add_adk_fastapi_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/"):
-    """Add ADK middleware endpoint to FastAPI app.
+    """FastAPI アプリに ADK ミドルウェアエンドポイントを追加
     
     Args:
-        app: FastAPI application instance
-        agent: Configured ADKAgent instance
-        path: API endpoint path
+        app: FastAPI アプリケーションインスタンス
+        agent: 設定済み ADKAgent インスタンス
+        path: API エンドポイントパス
     """
     
     @app.post(path)
     async def adk_endpoint(input_data: RunAgentInput, request: Request):
-        """ADK middleware endpoint."""
+        """ADK ミドルウェアエンドポイント"""
         
-        # Get the accept header from the request
+        # リクエストから accept ヘッダーを取得
         accept_header = request.headers.get("accept")
         agent_id = path.lstrip('/')
         
         
-        # Create an event encoder to properly format SSE events
+        # SSE イベントを正しくフォーマットするエンコーダーを作成
         encoder = EventEncoder(accept=accept_header)
         
         async def event_generator():
-            """Generate events from ADK agent."""
+            """ADK エージェントからイベントを生成"""
             try:
                 async for event in agent.run(input_data):
                     try:
@@ -42,9 +40,9 @@ def add_adk_fastapi_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/"):
                         logger.debug(f"HTTP Response: {encoded}")
                         yield encoded
                     except Exception as encoding_error:
-                        # Handle encoding-specific errors
+                        # エンコーディングエラーの処理
                         logger.error(f"❌ Event encoding error: {encoding_error}", exc_info=True)
-                        # Create a RunErrorEvent for encoding failures
+                        # エンコード失敗用の RunErrorEvent を作成
                         from ag_ui.core import RunErrorEvent, EventType
                         error_event = RunErrorEvent(
                             type=EventType.RUN_ERROR,
@@ -55,15 +53,15 @@ def add_adk_fastapi_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/"):
                             error_encoded = encoder.encode(error_event)
                             yield error_encoded
                         except Exception:
-                            # If we can't even encode the error event, yield a basic SSE error
+                            # エラーイベントすらエンコードできない場合は基本的な SSE エラーを返す
                             logger.error("Failed to encode error event, yielding basic SSE error")
                             yield "event: error\ndata: {\"error\": \"Event encoding failed\"}\n\n"
-                        break  # Stop the stream after an encoding error
+                        break  # エンコーディングエラー後はストリームを停止
             except Exception as agent_error:
-                # Handle errors from ADKAgent.run() itself
+                # ADKAgent.run() 自体からのエラーを処理
                 logger.error(f"❌ ADKAgent error: {agent_error}", exc_info=True)
-                # ADKAgent should have yielded a RunErrorEvent, but if something went wrong
-                # in the async generator itself, we need to handle it
+                # ADKAgent は RunErrorEvent を出すべきだが、非同期ジェネレータ自体で
+                # 問題が発生した場合はここで処理する必要がある
                 try:
                     from ag_ui.core import RunErrorEvent, EventType
                     error_event = RunErrorEvent(
@@ -74,7 +72,7 @@ def add_adk_fastapi_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/"):
                     error_encoded = encoder.encode(error_event)
                     yield error_encoded
                 except Exception:
-                    # If we can't encode the error event, yield a basic SSE error
+                    # エラーイベントをエンコードできない場合は基本的な SSE エラーを返す
                     logger.error("Failed to encode agent error event, yielding basic SSE error")
                     yield "event: error\ndata: {\"error\": \"Agent execution failed\"}\n\n"
         
@@ -82,14 +80,14 @@ def add_adk_fastapi_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/"):
 
 
 def create_adk_app(agent: ADKAgent, path: str = "/") -> FastAPI:
-    """Create a FastAPI app with ADK middleware endpoint.
+    """ADK ミドルウェアエンドポイント付きの FastAPI アプリを作成
     
     Args:
-        agent: Configured ADKAgent instance  
-        path: API endpoint path
+        agent: 設定済み ADKAgent インスタンス
+        path: API エンドポイントパス
         
     Returns:
-        FastAPI application instance
+        FastAPI アプリケーションインスタンス
     """
     app = FastAPI(title="ADK Middleware for AG-UI Protocol")
     add_adk_fastapi_endpoint(app, agent, path)

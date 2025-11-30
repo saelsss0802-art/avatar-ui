@@ -1,6 +1,4 @@
-# src/utils/converters.py
-
-"""Conversion utilities between AG-UI and ADK formats."""
+# AG-UI と ADK フォーマット間の変換ユーティリティ
 
 from typing import List, Dict, Any, Optional
 import json
@@ -17,26 +15,26 @@ logger = logging.getLogger(__name__)
 
 
 def convert_ag_ui_messages_to_adk(messages: List[Message]) -> List[ADKEvent]:
-    """Convert AG-UI messages to ADK events.
+    """AG-UI メッセージを ADK イベントに変換
     
     Args:
-        messages: List of AG-UI messages
+        messages: AG-UI メッセージのリスト
         
     Returns:
-        List of ADK events
+        ADK イベントのリスト
     """
     adk_events = []
     
     for message in messages:
         try:
-            # Create base event
+            # ベースイベントを作成
             event = ADKEvent(
                 id=message.id,
                 author=message.role,
                 content=None
             )
             
-            # Convert content based on message type
+            # メッセージタイプに基づいてコンテンツを変換
             if isinstance(message, (UserMessage, SystemMessage)):
                 flattened_content = flatten_message_content(message.content)
                 if flattened_content:
@@ -48,11 +46,11 @@ def convert_ag_ui_messages_to_adk(messages: List[Message]) -> List[ADKEvent]:
             elif isinstance(message, AssistantMessage):
                 parts = []
 
-                # Add text content if present
+                # テキストコンテンツがあれば追加
                 if message.content:
                     parts.append(types.Part(text=flatten_message_content(message.content)))
                 
-                # Add tool calls if present
+                # ツールコールがあれば追加
                 if message.tool_calls:
                     for tool_call in message.tool_calls:
                         parts.append(types.Part(
@@ -65,12 +63,12 @@ def convert_ag_ui_messages_to_adk(messages: List[Message]) -> List[ADKEvent]:
                 
                 if parts:
                     event.content = types.Content(
-                        role="model",  # ADK uses "model" for assistant
+                        role="model",  # ADK はアシスタントに "model" を使用
                         parts=parts
                     )
             
             elif isinstance(message, ToolMessage):
-                # Tool messages become function responses
+                # ツールメッセージは関数レスポンスになる
                 event.content = types.Content(
                     role="function",
                     parts=[types.Part(
@@ -92,22 +90,22 @@ def convert_ag_ui_messages_to_adk(messages: List[Message]) -> List[ADKEvent]:
 
 
 def convert_adk_event_to_ag_ui_message(event: ADKEvent) -> Optional[Message]:
-    """Convert an ADK event to an AG-UI message.
+    """ADK イベントを AG-UI メッセージに変換
     
     Args:
-        event: ADK event
+        event: ADK イベント
         
     Returns:
-        AG-UI message or None if not convertible
+        AG-UI メッセージ、または変換不可の場合は None
     """
     try:
-        # Skip events without content
+        # コンテンツのないイベントはスキップ
         if not event.content or not event.content.parts:
             return None
         
-        # Determine message type based on author/role
+        # author/role に基づいてメッセージタイプを決定
         if event.author == "user":
-            # Extract text content
+            # テキストコンテンツを抽出
             text_parts = [part.text for part in event.content.parts if part.text]
             if text_parts:
                 return UserMessage(
@@ -116,8 +114,8 @@ def convert_adk_event_to_ag_ui_message(event: ADKEvent) -> Optional[Message]:
                     content="\n".join(text_parts)
                 )
         
-        else:  # Assistant/model response
-            # Extract text and tool calls
+        else:  # アシスタント/モデルのレスポンス
+            # テキストとツールコールを抽出
             text_parts = []
             tool_calls = []
             
@@ -148,27 +146,27 @@ def convert_adk_event_to_ag_ui_message(event: ADKEvent) -> Optional[Message]:
 
 
 def convert_state_to_json_patch(state_delta: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Convert a state delta to JSON Patch format (RFC 6902).
+    """状態デルタを JSON Patch フォーマット（RFC 6902）に変換
     
     Args:
-        state_delta: Dictionary of state changes
+        state_delta: 状態変更の辞書
         
     Returns:
-        List of JSON Patch operations
+        JSON Patch 操作のリスト
     """
     patches = []
     
     for key, value in state_delta.items():
-        # Determine operation type
+        # 操作タイプを決定
         if value is None:
-            # Remove operation
+            # 削除操作
             patches.append({
                 "op": "remove",
                 "path": f"/{key}"
             })
         else:
-            # Add/replace operation
-            # We use "replace" as it works for both existing and new keys
+            # 追加/置換操作
+            # 既存キーと新規キーの両方に対応するため "replace" を使用
             patches.append({
                 "op": "replace",
                 "path": f"/{key}",
@@ -179,13 +177,13 @@ def convert_state_to_json_patch(state_delta: Dict[str, Any]) -> List[Dict[str, A
 
 
 def convert_json_patch_to_state(patches: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Convert JSON Patch operations to a state delta dictionary.
+    """JSON Patch 操作を状態デルタ辞書に変換
     
     Args:
-        patches: List of JSON Patch operations
+        patches: JSON Patch 操作のリスト
         
     Returns:
-        Dictionary of state changes
+        状態変更の辞書
     """
     state_delta = {}
     
@@ -193,20 +191,20 @@ def convert_json_patch_to_state(patches: List[Dict[str, Any]]) -> Dict[str, Any]
         op = patch.get("op")
         path = patch.get("path", "")
         
-        # Extract key from path (remove leading slash)
+        # パスからキーを抽出（先頭のスラッシュを削除）
         key = path.lstrip("/")
         
         if op == "remove":
             state_delta[key] = None
         elif op in ["add", "replace"]:
             state_delta[key] = patch.get("value")
-        # Ignore other operations for now (copy, move, test)
+        # 他の操作は今のところ無視（copy, move, test）
     
     return state_delta
 
 
 def extract_text_from_content(content: types.Content) -> str:
-    """Extract all text from ADK Content object."""
+    """ADK Content オブジェクトからすべてのテキストを抽出"""
     if not content or not content.parts:
         return ""
 
@@ -233,14 +231,14 @@ def flatten_message_content(content: Any) -> str:
 
 
 def create_error_message(error: Exception, context: str = "") -> str:
-    """Create a user-friendly error message.
+    """ユーザーフレンドリーなエラーメッセージを作成
     
     Args:
-        error: The exception
-        context: Additional context about where the error occurred
+        error: 例外
+        context: エラー発生場所に関する追加コンテキスト
         
     Returns:
-        Formatted error message
+        フォーマット済みエラーメッセージ
     """
     error_type = type(error).__name__
     error_msg = str(error)

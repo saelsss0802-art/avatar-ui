@@ -1,6 +1,4 @@
-# src/event_translator.py
-
-"""Event translator for converting ADK events to AG-UI protocol events."""
+# ADK イベントを AG-UI プロトコルイベントに変換するイベントトランスレーター
 
 import dataclasses
 from collections.abc import Iterable, Mapping
@@ -23,7 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def _coerce_tool_response(value: Any, _visited: Optional[set[int]] = None) -> Any:
-    """Recursively convert arbitrary tool responses into JSON-serializable structures."""
+    """任意のツールレスポンスを JSON シリアライズ可能な構造に再帰的に変換"""
 
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
@@ -107,7 +105,7 @@ def _coerce_tool_response(value: Any, _visited: Optional[set[int]] = None) -> An
         _visited.discard(obj_id)
 
 def _serialize_tool_response(response: Any) -> str:
-    """Serialize a tool response into a JSON string."""
+    """ツールレスポンスを JSON 文字列にシリアライズ"""
 
     try:
         coerced = _coerce_tool_response(response)
@@ -121,23 +119,23 @@ def _serialize_tool_response(response: Any) -> str:
             return json.dumps("", ensure_ascii=False)
 
 class EventTranslator:
-    """Translates Google ADK events to AG-UI protocol events.
+    """Google ADK イベントを AG-UI プロトコルイベントに変換
     
-    This class handles the conversion between the two event systems,
-    managing streaming sequences and maintaining event consistency.
+    2つのイベントシステム間の変換を処理し、
+    ストリーミングシーケンスを管理しイベントの一貫性を維持する。
     """
     
     def __init__(self):
-        """Initialize the event translator."""
-        # Track tool call IDs for consistency 
-        self._active_tool_calls: Dict[str, str] = {}  # Tool call ID -> Tool call ID (for consistency)
-        # Track streaming message state
-        self._streaming_message_id: Optional[str] = None  # Current streaming message ID
-        self._is_streaming: bool = False  # Whether we're currently streaming a message
-        self._current_stream_text: str = ""  # Accumulates text for the active stream
-        self._last_streamed_text: Optional[str] = None  # Snapshot of most recently streamed text
-        self._last_streamed_run_id: Optional[str] = None  # Run identifier for the last streamed text
-        self.long_running_tool_ids: List[str] = []  # Track the long running tool IDs
+        """イベントトランスレーターを初期化"""
+        # 一貫性のためツールコール ID を追跡
+        self._active_tool_calls: Dict[str, str] = {}  # ツールコール ID -> ツールコール ID
+        # ストリーミングメッセージ状態を追跡
+        self._streaming_message_id: Optional[str] = None  # 現在のストリーミングメッセージ ID
+        self._is_streaming: bool = False  # 現在メッセージをストリーミング中かどうか
+        self._current_stream_text: str = ""  # アクティブなストリームのテキストを蓄積
+        self._last_streamed_text: Optional[str] = None  # 最後にストリームしたテキストのスナップショット
+        self._last_streamed_run_id: Optional[str] = None  # 最後にストリームしたテキストの実行識別子
+        self.long_running_tool_ids: List[str] = []  # 長時間実行ツール ID を追跡
     
     async def translate(
         self, 
@@ -145,49 +143,48 @@ class EventTranslator:
         thread_id: str,
         run_id: str
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Translate an ADK event to AG-UI protocol events.
+        """ADK イベントを AG-UI プロトコルイベントに変換
         
         Args:
-            adk_event: The ADK event to translate
-            thread_id: The AG-UI thread ID
-            run_id: The AG-UI run ID
+            adk_event: 変換する ADK イベント
+            thread_id: AG-UI スレッド ID
+            run_id: AG-UI 実行 ID
             
         Yields:
-            One or more AG-UI protocol events
+            1つ以上の AG-UI プロトコルイベント
         """
         try:
-            # Check ADK streaming state using proper methods
+            # 適切なメソッドを使用して ADK ストリーミング状態をチェック
             is_partial = getattr(adk_event, 'partial', False)
             turn_complete = getattr(adk_event, 'turn_complete', False)
             
-            # Check if this is the final response (contains complete message - skip to avoid duplication)
+            # これが最終レスポンスかチェック（完全なメッセージを含む - 重複を避けるためスキップ）
             is_final_response = False
             if hasattr(adk_event, 'is_final_response') and callable(adk_event.is_final_response):
                 is_final_response = adk_event.is_final_response()
             elif hasattr(adk_event, 'is_final_response'):
                 is_final_response = adk_event.is_final_response
             
-            # Determine action based on ADK streaming pattern
+            # ADK ストリーミングパターンに基づいてアクションを決定
             should_send_end = turn_complete and not is_partial
 
-            # Skip user events (already in the conversation)
+            # ユーザーイベントをスキップ（既に会話に含まれている）
             if hasattr(adk_event, 'author') and adk_event.author == "user":
                 logger.debug("Skipping user event")
                 return
             
-            # Handle text content
-            # --- THIS IS THE RESTORED LINE ---
+            # テキストコンテンツを処理
             if adk_event.content and hasattr(adk_event.content, 'parts') and adk_event.content.parts:
                 async for event in self._translate_text_content(
                     adk_event, thread_id, run_id
                 ):
                     yield event
             
-            # call _translate_function_calls function to yield Tool Events
+            # _translate_function_calls 関数を呼び出してツールイベントを yield
             if hasattr(adk_event, 'get_function_calls'):               
                 function_calls = adk_event.get_function_calls()
                 if function_calls:
-                    # Filter out long-running tool calls; those are handled by translate_lro_function_calls
+                    # 長時間実行ツールコールをフィルタリング（translate_lro_function_calls で処理）
                     try:
                         lro_ids = set(getattr(adk_event, 'long_running_tool_ids', []) or [])
                     except Exception:
@@ -197,26 +194,26 @@ class EventTranslator:
 
                     if non_lro_calls:
                         logger.debug(f"ADK function calls detected (non-LRO): {len(non_lro_calls)} of {len(function_calls)} total")
-                        # CRITICAL FIX: End any active text message stream before starting tool calls
-                        # Per AG-UI protocol: TEXT_MESSAGE_END must be sent before TOOL_CALL_START
+                        # 重要な修正: ツールコール開始前にアクティブなテキストメッセージストリームを終了
+                        # AG-UI プロトコル: TEXT_MESSAGE_END は TOOL_CALL_START の前に送信必須
                         async for event in self.force_close_streaming_message():
                             yield event
                         
-                        # Yield only non-LRO function call events
+                        # 非 LRO 関数コールイベントのみを yield
                         async for event in self._translate_function_calls(non_lro_calls):
                             yield event
                         
-            # Handle function responses and yield the tool response event
-            # this is essential for scenerios when user has to render function response at frontend
+            # 関数レスポンスを処理しツールレスポンスイベントを yield
+            # フロントエンドで関数レスポンスをレンダリングする必要があるシナリオに必須
             if hasattr(adk_event, 'get_function_responses'):
                 function_responses = adk_event.get_function_responses()
                 if function_responses:
-                    # Function responses should be emmitted to frontend so it can render the response as well
+                    # 関数レスポンスはフロントエンドに送信してレンダリングできるようにする
                     async for event in self._translate_function_response(function_responses):
                         yield event
                     
             
-            # Handle state changes
+            # 状態変更を処理
             if hasattr(adk_event, 'actions') and adk_event.actions:
                 if hasattr(adk_event.actions, 'state_delta') and adk_event.actions.state_delta:
                     yield self._create_state_delta_event(
@@ -229,7 +226,7 @@ class EventTranslator:
                         yield self._create_state_snapshot_event(state_snapshot)
                 
             
-            # Handle custom events or metadata
+            # カスタムイベントまたはメタデータを処理
             if hasattr(adk_event, 'custom_data') and adk_event.custom_data:
                 yield CustomEvent(
                     type=EventType.CUSTOM,
@@ -239,7 +236,7 @@ class EventTranslator:
                 
         except Exception as e:
             logger.error(f"Error translating ADK event: {e}", exc_info=True)
-            # Don't yield error events here - let the caller handle errors
+            # ここではエラーイベントを yield しない - 呼び出し元がエラーを処理
     
     async def _translate_text_content(
         self,
@@ -247,46 +244,46 @@ class EventTranslator:
         thread_id: str,
         run_id: str
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Translate text content from ADK event to AG-UI text message events.
+        """ADK イベントからテキストコンテンツを AG-UI テキストメッセージイベントに変換
         
         Args:
-            adk_event: The ADK event containing text content
-            thread_id: The AG-UI thread ID
-            run_id: The AG-UI run ID
+            adk_event: テキストコンテンツを含む ADK イベント
+            thread_id: AG-UI スレッド ID
+            run_id: AG-UI 実行 ID
             
         Yields:
-            Text message events (START, CONTENT, END)
+            テキストメッセージイベント (START, CONTENT, END)
         """
         
-        # Check for is_final_response *before* checking for text.
-        # An empty final response is a valid stream-closing signal.
+        # テキストをチェックする*前に* is_final_response をチェック
+        # 空の final response は有効なストリーム終了シグナル
         is_final_response = False
         if hasattr(adk_event, 'is_final_response') and callable(adk_event.is_final_response):
             is_final_response = adk_event.is_final_response()
         elif hasattr(adk_event, 'is_final_response'):
             is_final_response = adk_event.is_final_response
         
-        # Extract text from all parts
+        # すべての parts からテキストを抽出
         text_parts = []
-        # The check for adk_event.content.parts happens in the main translate method
+        # adk_event.content.parts のチェックはメインの translate メソッドで行う
         for part in adk_event.content.parts:
-            if part.text: # Note: part.text == "" is False
+            if part.text:  # 注: part.text == "" は False
                 text_parts.append(part.text)
         
-        # If no text AND it's not a final response, we can safely skip.
-        # Otherwise, we must continue to process the final_response signal.
+        # テキストがなく、final response でもない場合は安全にスキップ可能
+        # そうでなければ final_response シグナルを処理し続ける必要あり
         if not text_parts and not is_final_response:
             return
 
         combined_text = "".join(text_parts)
 
-        # Use proper ADK streaming detection (handle None values)
+        # 適切な ADK ストリーミング検出を使用（None 値を処理）
         is_partial = getattr(adk_event, 'partial', False)
         turn_complete = getattr(adk_event, 'turn_complete', False)
         
-        # (is_final_response is already calculated above)
+        # (is_final_response は上で既に計算済み)
         
-        # Handle None values: if a turn is complete or a final chunk arrives, end streaming
+        # None 値を処理: ターンが完了または final チャンクが到着したら、ストリーミングを終了
         has_finish_reason = bool(getattr(adk_event, 'finish_reason', None))
         should_send_end = (
             (turn_complete and not is_partial)
@@ -295,14 +292,14 @@ class EventTranslator:
         )
 
         if is_final_response:
-            # This is the final, complete message event.
+            # これは最終的な完全メッセージイベント
 
-            # Case 1: A stream is actively running. We must close it.
+            # ケース 1: ストリームがアクティブに実行中。閉じる必要あり
             if self._is_streaming and self._streaming_message_id:
                 logger.info("⏭️ Final response event received. Closing active stream.")
                 
                 if self._current_stream_text:
-                    # Save the complete streamed text for de-duplication
+                    # 重複排除のため完全なストリームテキストを保存
                     self._last_streamed_text = self._current_stream_text
                     self._last_streamed_run_id = run_id
                 self._current_stream_text = ""
@@ -316,13 +313,13 @@ class EventTranslator:
                 self._streaming_message_id = None
                 self._is_streaming = False
                 logger.info("🏁 Streaming completed via final response")
-                return # We are done.
+                return  # 完了
 
-            # Case 2: No stream is active. 
-            # This event contains the *entire* message.
-            # We must send it, *unless* it's a duplicate of a stream that *just* finished.
+            # ケース 2: アクティブなストリームなし
+            # このイベントは*完全な*メッセージを含む
+            # 送信する必要あり、*ただし*直前に終了したストリームの重複でなければ
             
-            # Check for duplicates from a *previous* stream in this *same run*.
+            # この*同じ実行*での*前の*ストリームからの重複をチェック
             is_duplicate = (
                 self._last_streamed_run_id == run_id and
                 self._last_streamed_text is not None and
@@ -334,7 +331,7 @@ class EventTranslator:
                     "⏭️ Skipping final response event (duplicate content detected from finished stream)"
                 )
             else:
-                # Not a duplicate, or no previous stream. Send the full message.
+                # 重複でないか、前のストリームなし。完全なメッセージを送信
                 logger.info(
                     f"⏩ Delivering complete non-streamed message or final content event_id={adk_event.id}"
                 )
@@ -357,16 +354,16 @@ class EventTranslator:
                 for msg in message_events:
                     yield msg
 
-            # Clean up state regardless, as this is the end of the line for text.
+            # テキストの終端なので、いずれにせよ状態をクリーンアップ
             self._current_stream_text = ""
             self._last_streamed_text = None
             self._last_streamed_run_id = None
             return
 
         
-        # Handle streaming logic (if not is_final_response)
+        # ストリーミングロジックを処理（is_final_response でない場合）
         if not self._is_streaming:
-            # Start of new message - emit START event
+            # 新しいメッセージの開始 - START イベントを発行
             self._streaming_message_id = str(uuid.uuid4())
             self._is_streaming = True
             self._current_stream_text = ""
@@ -378,7 +375,7 @@ class EventTranslator:
             )
             yield start_event
         
-        # Always emit content (unless empty)
+        # 常にコンテンツを発行（空でなければ）
         if combined_text:
             self._current_stream_text += combined_text
             content_event = TextMessageContentEvent(
@@ -388,7 +385,7 @@ class EventTranslator:
             )
             yield content_event
         
-        # If turn is complete and not partial, emit END event
+        # ターンが完了し partial でなければ、END イベントを発行
         if should_send_end:
             end_event = TextMessageEndEvent(
                 type=EventType.TEXT_MESSAGE_END,
@@ -396,7 +393,7 @@ class EventTranslator:
             )
             yield end_event
 
-            # Reset streaming state
+            # ストリーミング状態をリセット
             if self._current_stream_text:
                 self._last_streamed_text = self._current_stream_text
                 self._last_streamed_run_id = run_id
@@ -406,13 +403,13 @@ class EventTranslator:
             logger.info("🏁 Streaming completed, state reset")
     
     async def translate_lro_function_calls(self,adk_event: ADKEvent)-> AsyncGenerator[BaseEvent, None]:
-        """Translate long running function calls from ADK event to AG-UI tool call events.
+        """ADK イベントから長時間実行関数コールを AG-UI ツールコールイベントに変換
 
         Args:
-            adk_event: The ADK event containing function calls
+            adk_event: 関数コールを含む ADK イベント
 
         Yields:
-            Tool call events (START, ARGS, END)
+            ツールコールイベント (START, ARGS, END)
         """
 
         long_running_function_call = None
@@ -431,7 +428,7 @@ class EventTranslator:
                             parent_message_id=None
                         )
                         if hasattr(long_running_function_call, 'args') and long_running_function_call.args:
-                            # Convert args to string (JSON format)
+                            # 引数を文字列に変換（JSON フォーマット）
                             import json
                             args_str = json.dumps(long_running_function_call.args) if isinstance(long_running_function_call.args, dict) else str(long_running_function_call.args)
                             yield ToolCallArgsEvent(
@@ -440,44 +437,41 @@ class EventTranslator:
                                 delta=args_str
                             )
                         
-                        # Emit TOOL_CALL_END
+                        # TOOL_CALL_END を発行
                         yield ToolCallEndEvent(
                             type=EventType.TOOL_CALL_END,
                             tool_call_id=long_running_function_call.id
                         )
 
-                        # Clean up tracking
+                        # 追跡をクリーンアップ
                         self._active_tool_calls.pop(long_running_function_call.id, None)
     
     async def _translate_function_calls(
         self,
         function_calls: list[types.FunctionCall],
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Translate function calls from ADK event to AG-UI tool call events.
+        """ADK イベントから関数コールを AG-UI ツールコールイベントに変換
 
         Args:
-            adk_event: The ADK event containing function calls
-            function_calls: List of function calls from the event
-            thread_id: The AG-UI thread ID
-            run_id: The AG-UI run ID
+            function_calls: イベントからの関数コールリスト
 
         Yields:
-            Tool call events (START, ARGS, END)
+            ツールコールイベント (START, ARGS, END)
         """
-        # Since we're not tracking streaming messages, use None for parent message
+        # ストリーミングメッセージを追跡していないので、親メッセージに None を使用
         parent_message_id = None
 
         for func_call in function_calls:
             tool_call_id = getattr(func_call, 'id', str(uuid.uuid4()))
 
-            # Check if this tool call ID already exists
+            # このツールコール ID が既に存在するかチェック
             if tool_call_id in self._active_tool_calls:
                 logger.warning(f"⚠️  DUPLICATE TOOL CALL! Tool call ID {tool_call_id} (name: {func_call.name}) already exists in active calls!")
 
-            # Track the tool call
+            # ツールコールを追跡
             self._active_tool_calls[tool_call_id] = tool_call_id
 
-            # Emit TOOL_CALL_START
+            # TOOL_CALL_START を発行
             yield ToolCallStartEvent(
                 type=EventType.TOOL_CALL_START,
                 tool_call_id=tool_call_id,
@@ -485,9 +479,9 @@ class EventTranslator:
                 parent_message_id=parent_message_id
             )
 
-            # Emit TOOL_CALL_ARGS if we have arguments
+            # 引数があれば TOOL_CALL_ARGS を発行
             if hasattr(func_call, 'args') and func_call.args:
-                # Convert args to string (JSON format)
+                # 引数を文字列に変換（JSON フォーマット）
                 import json
                 args_str = json.dumps(func_call.args) if isinstance(func_call.args, dict) else str(func_call.args)
 
@@ -497,13 +491,13 @@ class EventTranslator:
                     delta=args_str
                 )
 
-            # Emit TOOL_CALL_END
+            # TOOL_CALL_END を発行
             yield ToolCallEndEvent(
                 type=EventType.TOOL_CALL_END,
                 tool_call_id=tool_call_id
             )
 
-            # Clean up tracking
+            # 追跡をクリーンアップ
             self._active_tool_calls.pop(tool_call_id, None)
 
     
@@ -512,21 +506,20 @@ class EventTranslator:
         self,
         function_response: list[types.FunctionResponse],
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Translate function calls from ADK event to AG-UI tool call events.
+        """ADK イベントから関数レスポンスを AG-UI ツール結果イベントに変換
         
         Args:
-            adk_event: The ADK event containing function calls
-            function_response: List of function response from the event
+            function_response: イベントからの関数レスポンスリスト
             
         Yields:
-            Tool result events (only for tool_call_ids not in long_running_tool_ids)
+            ツール結果イベント（long_running_tool_ids にない tool_call_id のみ）
         """
         
         for func_response in function_response:
             
             tool_call_id = getattr(func_response, 'id', str(uuid.uuid4()))
-            # Only emit ToolCallResultEvent for tool_call_ids which are not long_running_tool
-            # this is because long running tools are handle by the frontend
+            # long_running_tool でない tool_call_id に対してのみ ToolCallResultEvent を発行
+            # 長時間実行ツールはフロントエンドで処理されるため
             if tool_call_id not in self.long_running_tool_ids:
                 yield ToolCallResultEvent(
                     message_id=str(uuid.uuid4()),
@@ -543,18 +536,18 @@ class EventTranslator:
         thread_id: str,
         run_id: str
     ) -> StateDeltaEvent:
-        """Create a state delta event from ADK state changes.
+        """ADK 状態変更から状態デルタイベントを作成
         
         Args:
-            state_delta: The state changes from ADK
-            thread_id: The AG-UI thread ID
-            run_id: The AG-UI run ID
+            state_delta: ADK からの状態変更
+            thread_id: AG-UI スレッド ID
+            run_id: AG-UI 実行 ID
             
         Returns:
-            A StateDeltaEvent
+            StateDeltaEvent
         """
-        # Convert to JSON Patch format (RFC 6902)
-        # Use "add" operation which works for both new and existing paths
+        # JSON Patch フォーマット (RFC 6902) に変換
+        # 新規と既存パスの両方で機能する "add" 操作を使用
         patches = []
         for key, value in state_delta.items():
             patches.append({
@@ -572,13 +565,13 @@ class EventTranslator:
         self,
         state_snapshot: Dict[str, Any],
     ) -> StateSnapshotEvent:
-        """Create a state snapshot event from ADK state changes.
+        """ADK 状態変更から状態スナップショットイベントを作成
         
         Args:
-            state_snapshot: The state changes from ADK
+            state_snapshot: ADK からの状態変更
             
         Returns:
-            A StateSnapshotEvent
+            StateSnapshotEvent
         """
  
         return StateSnapshotEvent(
@@ -587,12 +580,12 @@ class EventTranslator:
         )
     
     async def force_close_streaming_message(self) -> AsyncGenerator[BaseEvent, None]:
-        """Force close any open streaming message.
+        """開いているストリーミングメッセージを強制的に閉じる
         
-        This should be called before ending a run to ensure proper message termination.
+        適切なメッセージ終了を確保するため、実行終了前に呼び出すべき。
         
         Yields:
-            TEXT_MESSAGE_END event if there was an open streaming message
+            開いているストリーミングメッセージがあれば TEXT_MESSAGE_END イベント
         """
         if self._is_streaming and self._streaming_message_id:
             logger.warning(f"🚨 Force-closing unterminated streaming message: {self._streaming_message_id}")
@@ -603,17 +596,16 @@ class EventTranslator:
             )
             yield end_event
 
-            # Reset streaming state
+            # ストリーミング状態をリセット
             self._current_stream_text = ""
             self._streaming_message_id = None
             self._is_streaming = False
             logger.info("🔄 Streaming state reset after force-close")
 
     def reset(self):
-        """Reset the translator state.
+        """トランスレーター状態をリセット
         
-        This should be called between different conversation runs
-        to ensure clean state.
+        クリーンな状態を確保するため、異なる会話実行間で呼び出すべき。
         """
         self._active_tool_calls.clear()
         self._streaming_message_id = None

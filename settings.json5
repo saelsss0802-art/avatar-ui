@@ -62,7 +62,7 @@
     "opacity": 0.75,
     // 効果音ボリューム（0.0-1.0）
     "soundVolume": 0.5,
-    // 口パク切り替え間隔（ms）
+    // リップシンク切り替え間隔（ms）
     "mouthInterval": 120,
     // ビープ音設定
     "beepFrequency": 600,

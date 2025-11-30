@@ -1,6 +1,4 @@
-# src/utils/__init__.py
-
-"""Utility functions for ADK middleware."""
+# ADK ミドルウェア用ユーティリティ関数
 
 from .converters import (
     convert_ag_ui_messages_to_adk,

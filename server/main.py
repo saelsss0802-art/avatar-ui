@@ -1,3 +1,4 @@
+# AG-UI サーバーのエントリーポイント（FastAPI + Google ADK）
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -10,13 +11,13 @@ from google.adk import tools as adk_tools
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools.agent_tool import AgentTool
 
-# 設定モジュールをインポート
 from src import config
 
+# 検索サブエージェントを使う場合は GOOGLE_API_KEY が必須
 if config.SEARCH_SUBAGENT_ENABLED and not config.GOOGLE_API_KEY:
     raise RuntimeError("GOOGLE_API_KEY is not set. Please add it to .env in project root")
 
-# Logging: 共通設定（uvicorn と整合）
+# ---------- ロギング設定 ----------
 logs_dir = Path(__file__).resolve().parent / "logs"
 logs_dir.mkdir(exist_ok=True)
 log_file = logs_dir / "app.log"
@@ -29,7 +30,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agui-adk-bridge")
 
+# ---------- エージェント構築 ----------
+
 def resolve_model(provider: str, model: str):
+    """プロバイダに応じたモデルインスタンスを返す（gemini は直接、他は LiteLlm 経由）"""
     provider = provider.lower()
     if provider == "gemini":
         return model
@@ -40,7 +44,7 @@ def resolve_model(provider: str, model: str):
 
 
 def build_agent() -> ADKAgent:
-    # 検索サブエージェント（必要なら）
+    """メインエージェントを構築（検索サブエージェント付きの場合あり）"""
     search_tool = None
     if config.SEARCH_SUBAGENT_ENABLED:
         search_agent = LlmAgent(
@@ -74,11 +78,11 @@ def build_agent() -> ADKAgent:
     )
 
 
+# エージェントインスタンス（サーバー起動時に構築）
 agent = build_agent()
 
+# ---------- FastAPI アプリケーション ----------
 app = FastAPI(title="AG-UI ADK Bridge")
-
-# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -87,9 +91,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# リクエストログ用ミドルウェア（dev 時のみボディを記録）
 @app.middleware("http")
 async def log_agui_request(request: Request, call_next):
-    # ボディログは dev/LOG_BODY=true のときだけ
     if request.url.path == "/agui" and request.method == "POST":
         if config.APP_ENV == "dev" or config.LOG_BODY is True:
             body = await request.body()
@@ -120,12 +124,15 @@ def get_config():
         },
     }
 
+# AG-UI プロトコルのエンドポイントを登録
 add_adk_fastapi_endpoint(app, agent, path="/agui")
 
+# ヘルスチェック（ロードバランサー等から使用）
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
 
+# ルートパス（API の存在確認用）
 @app.get("/")
 def root():
     return {"status": "ok", "endpoint": "/agui"}

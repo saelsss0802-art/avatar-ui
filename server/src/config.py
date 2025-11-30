@@ -1,3 +1,4 @@
+# 設定の読み込みと検証（.env + settings.json5）
 import pyjson5 as json
 import os
 from pathlib import Path
@@ -7,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
-# プロジェクトルートのパス
+# ---------- パス定義 ----------
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
 # 設定ファイルの候補パス（JSON5に統一）
@@ -28,19 +29,22 @@ DEFAULT_ALLOWED_ORIGINS_DEV = [
     "http://127.0.0.1:{port}",
 ]
 
-# ---------- Pydantic モデル定義 ----------
+# ---------- Pydantic モデル定義（settings.json5 のスキーマ） ----------
 
+# UI の名前タグ設定
 class NameTags(BaseModel, extra="forbid"):
     user: str
     avatar: str
     avatarFullName: str
 
 
+# 起動時に表示するシステムメッセージ
 class SystemMessages(BaseModel, extra="forbid"):
     banner1: str
     banner2: str
 
 
+# UI 全般の設定
 class UiSettings(BaseModel, extra="forbid"):
     typeSpeed: int
     opacity: float
@@ -60,6 +64,7 @@ class UiSettings(BaseModel, extra="forbid"):
     themes: List["ThemePreset"] | None = None
 
 
+# カラーテーマのプリセット定義
 class ThemePreset(BaseModel, extra="forbid"):
     name: str
     themeColor: str
@@ -67,6 +72,7 @@ class ThemePreset(BaseModel, extra="forbid"):
     toolColor: str
 
 
+# サーバー側の設定（LLM プロバイダ、プロンプト等）
 class ServerSettings(BaseModel, extra="forbid"):
     llmProvider: str = "gemini"  # gemini | openai | anthropic
     llmModel: str
@@ -76,11 +82,13 @@ class ServerSettings(BaseModel, extra="forbid"):
     logBackupCount: int = Field(ge=0)
 
 
+# 検索サブエージェントの設定（Gemini + google_search を使用）
 class SearchSubAgent(BaseModel, extra="forbid"):
     enabled: bool = True
     model: str = "gemini-2.5-flash"
 
 
+# settings.json5 のルートスキーマ
 class AppSettings(BaseModel, extra="forbid"):
     server: ServerSettings
     ui: UiSettings
@@ -106,6 +114,7 @@ def resolve_theme(ui: UiSettings) -> dict:
     return resolved
 
 
+# .env から読み込む環境変数のスキーマ
 class EnvSettings(BaseSettings):
     google_api_key: str = Field(alias="GOOGLE_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -177,10 +186,10 @@ def load_env_settings() -> EnvSettings:
         raise RuntimeError(f"Config Error: environment validation failed: {e}") from e
 
 
-# ---------- 公開値（既存インターフェース互換） ----------
+# ---------- 公開値（他モジュールから参照する定数） ----------
 
-env_settings = load_env_settings()
-app_settings = load_settings_json()
+env_settings = load_env_settings()    # .env から読み込み
+app_settings = load_settings_json()   # settings.json5 から読み込み
 
 GOOGLE_API_KEY = env_settings.google_api_key
 AGENT_ID = env_settings.agent_id

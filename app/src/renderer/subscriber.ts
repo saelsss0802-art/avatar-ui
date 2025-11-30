@@ -1,3 +1,4 @@
+// エージェントイベントを受け取り、レンダラーの表示・音・ログを更新する購読処理
 import type { AgentSubscriber } from "@ag-ui/client";
 import { TerminalEngine } from "./engine/TerminalEngine";
 import { config } from "./config";
@@ -14,22 +15,29 @@ export function renderMarkdown(md: string): string {
   return DOMPurify.sanitize(html);
 }
 
+// UI サブスクライバーの初期化オプション
 interface UiSubscriberOptions {
-  outputEl: HTMLElement;
-  engine: TerminalEngine;
+  outputEl: HTMLElement;  // テキスト出力先
+  engine: TerminalEngine; // タイプライターエンジン
 }
 
+/**
+ * エージェントイベントを購読し、UI を更新するサブスクライバーを生成
+ */
 export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscriber {
   const { outputEl, engine } = options;
 
+  // ツール呼び出し表示用の状態
   let activeToolDetails: HTMLDetailsElement | null = null;
   let activeToolName = "";
   let argsBuffer = "";
 
+  // 出力エリアを最下部にスクロール
   const scrollToBottom = () => {
     outputEl.scrollTop = outputEl.scrollHeight;
   };
 
+  // テキスト行を追加
   const appendLine = (className: string, text: string) => {
     const line = document.createElement("div");
     line.className = `text-line ${className}`;
@@ -84,11 +92,13 @@ export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscribe
 
       activeToolDetails = details;
     },
+    // ツール引数の断片を受け取る（ストリーミング）
     onToolCallArgsEvent({ event }) {
       if (event.delta) {
         argsBuffer += event.delta;
       }
     },
+    // ツール呼び出し完了: サマリーを更新
     onToolCallEndEvent() {
       if (activeToolDetails) {
         let argsText = argsBuffer;
@@ -105,6 +115,7 @@ export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscribe
       }
       argsBuffer = "";
     },
+    // ツール結果を受け取り、折りたたみ内に表示
     onToolCallResultEvent({ event }) {
       if (activeToolDetails) {
         let resultText = event.content ?? "";

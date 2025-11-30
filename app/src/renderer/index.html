@@ -1,8 +1,10 @@
+<!-- レンダラーのレイアウト定義（出力・入力・アバターの3ペイン） -->
 <!doctype html>
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 開発用に localhost への接続を許可する CSP -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* https: ws: wss:;"
@@ -22,11 +24,12 @@
 
       <footer data-slot="input" id="pane-input">
         <span class="prompt">&gt;</span>
-      <input type="text" id="input" autofocus />
+        <input type="text" id="input" autofocus />
       </footer>
 
       <aside data-slot="avatar" id="pane-avatar">
         <div id="avatar-wrap">
+          <!-- アバター画像（idle/talk を data 属性で持ち替え） -->
           <img
             id="avatar-img"
             src="./idle.png"
@@ -38,6 +41,7 @@
         <div id="avatar-label" class="avatar-label">Spectra</div>
       </aside>
 
+      <!-- 画面下部のバージョン表示。手動更新が必要 -->
       <div class="meta-bar" id="meta">avatar-ui v1.0.0</div>
     </main>
 

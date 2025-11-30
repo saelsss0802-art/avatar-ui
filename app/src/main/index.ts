@@ -2,6 +2,8 @@ import { app, BrowserWindow, globalShortcut } from 'electron'
 import { join } from 'path'
 import { config as loadEnv } from 'dotenv'
 
+// Electron メインプロセスのエントリーポイント
+
 // 開発判定: Vite dev server の有無
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL)
 
@@ -10,9 +12,10 @@ if (isDev) {
   loadEnv({ path: join(__dirname, '../../.env') })
 }
 
+// 環境変数から設定を読み取り（デフォルト: prod）
 const APP_ENV = process.env.APP_ENV ?? 'prod'
-const OPEN_DEVTOOLS = process.env.OPEN_DEVTOOLS
-const ELECTRON_WARNINGS = process.env.ELECTRON_WARNINGS
+const OPEN_DEVTOOLS = process.env.OPEN_DEVTOOLS       // DevTools 強制開閉
+const ELECTRON_WARNINGS = process.env.ELECTRON_WARNINGS // 警告表示の強制指定
 
 // Electron の警告表示可否（デフォルト: dev=表示, prod=非表示）
 const warningsEnabled = (() => {
@@ -25,21 +28,22 @@ if (!warningsEnabled) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 }
 
+// メインウィンドウを生成
 function createWindow() {
   const win = new BrowserWindow({
-    width: 720,      // 16:9 aspect ratio based on height 360 (360 * 16 / 9 = 640)
-    height: 360,     // 最小高さに合わせる
-    minWidth: 600,   // レイアウト崩れを防ぐ最小幅
-    minHeight: 360,  // 最小高さを合わせる
-    frame: false,    // ネイティブタイトルバーを除去
-    transparent: true,
-    backgroundColor: '#00000000',
-    hasShadow: false, // 透過ウィンドウの影を削除（アーティファクト防止）
+    width: 720,       // 16:9 に近い横幅。高さ360と組み合わせて初期レイアウトを確保
+    height: 360,      // 初期高さ。全UIが収まる基準
+    minWidth: 600,    // レイアウト崩れを防ぐ最小幅
+    minHeight: 360,   // 主要UIが切れない最小高さ
+    frame: false,     // ネイティブタイトルバーを除去
+    transparent: true, // ウィンドウ背景を透過させる
+    backgroundColor: '#00000000', // 透過背景の色（完全透明）
+    hasShadow: false,  // 透過ウィンドウの影を消す
     webPreferences: {
-      nodeIntegration: false,      // ✅ 安全設定: Node機能無効
-      contextIsolation: true,      // ✅ 安全設定: コンテキスト分離
-      sandbox: true,               // ✅ 安全設定: レンダラーをサンドボックス化
-      devTools: isDev,             // 本番は常に無効
+      nodeIntegration: false,      // 安全設定: レンダラーから Node を触らせない
+      contextIsolation: true,      // 安全設定: コンテキスト分離
+      sandbox: true,               // 安全設定: レンダラーをサンドボックス化
+      devTools: isDev,             // 本番は無効
     }
   })
 
@@ -63,18 +67,21 @@ app.whenReady().then(() => {
   globalShortcut.register('CommandOrControl+Q', () => app.quit())
 })
 
+// すべてのウィンドウが閉じられたら、macOS 以外ではアプリを終了する
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
+// macOS で Dock アイコンから再度アクティブになったらウィンドウを再作成する
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
 })
 
+// アプリ終了時に登録済みショートカットを解放する
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 })

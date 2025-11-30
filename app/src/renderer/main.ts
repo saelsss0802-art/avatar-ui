@@ -1,3 +1,4 @@
+// レンダラーのメイン処理: 設定読み込み・UI初期化・エージェント実行をまとめる
 import { config, fetchConfig } from "./config";
 import { createAgent } from "../core/agent";
 import { loggerSubscriber } from "../core/loggerSubscriber";
@@ -5,9 +6,10 @@ import { createUiSubscriber, renderMarkdown } from "./subscriber";
 import { TerminalEngine } from "./engine/TerminalEngine";
 import pkg from "../../package.json"; // バージョン情報の取得
 
-// グローバルsubscriber登録（ロガー）
+// エージェントのインスタンスを保持する
 let agentInstance = null as ReturnType<typeof createAgent> | null;
 
+// UI 要素への参照を確保
 const inputEl = document.getElementById("input") as HTMLInputElement | null;
 const outputEl = document.querySelector("#pane-output .text-scroll") as HTMLElement | null;
 const avatarImg = document.getElementById("avatar-img") as HTMLImageElement | null;
@@ -49,8 +51,8 @@ async function initApp() {
   // ---------------------------------------------------------
   const root = document.documentElement;
 
-  // HEX -> RGB 変換ヘルパー
-  const hexToRgb = (hex: string) => {
+  // HEX -> RGB 変換ヘルパー（CSS変数への注入用）
+  const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
       ? {
@@ -93,7 +95,7 @@ async function initApp() {
 
   // 透過設定を適用
   if (config.ui.opacity !== undefined) {
-    document.body.style.backgroundColor = `rgba(0, 0, 0, 0.0)`; // bodyは完全透過
+    document.body.style.backgroundColor = `rgba(0, 0, 0, 0.0)`; // bodyを完全透過
     root.style.setProperty("--ui-opacity", String(config.ui.opacity));
   }
 
@@ -105,12 +107,12 @@ async function initApp() {
     root.style.setProperty("--avatar-brightness", String(config.ui.avatarBrightness));
   }
   if (config.ui.glowText !== undefined) {
-    root.style.setProperty("--glow-text-alpha1", String(0.6 * config.ui.glowText));
-    root.style.setProperty("--glow-text-alpha2", String(0.4 * config.ui.glowText));
+    root.style.setProperty("--glow-text-alpha1", String(0.6 * config.ui.glowText)); // 強めのグロー係数
+    root.style.setProperty("--glow-text-alpha2", String(0.4 * config.ui.glowText)); // 弱めのグロー係数
   }
   if (config.ui.glowBox !== undefined) {
-    root.style.setProperty("--glow-box-alpha1", String(0.4 * config.ui.glowBox));
-    root.style.setProperty("--glow-box-alpha2", String(0.2 * config.ui.glowBox));
+    root.style.setProperty("--glow-box-alpha1", String(0.4 * config.ui.glowBox)); // 外枠の強めグロー係数
+    root.style.setProperty("--glow-box-alpha2", String(0.2 * config.ui.glowBox)); // 外枠の弱めグロー係数
   }
   if (config.ui.brightness !== undefined) {
     root.style.setProperty("--ui-brightness", String(config.ui.brightness));
@@ -128,6 +130,7 @@ async function initApp() {
   });
   agentInstance.subscribe(loggerSubscriber);
 
+  // テキスト行を追加（エンジンを介さない即時表示用）
   const appendLine = (className: string, text: string) => {
     const line = document.createElement("div");
     line.className = `text-line ${className}`;
@@ -136,8 +139,9 @@ async function initApp() {
     outputEl.scrollTop = outputEl.scrollHeight;
   };
 
-  let isRunning = false;
+  let isRunning = false; // 多重実行防止フラグ
 
+  // ユーザー入力を処理してエージェントに送信
   inputEl.addEventListener("keydown", async (event) => {
     if (event.isComposing || event.key !== "Enter") {
       return;
@@ -178,6 +182,7 @@ async function initApp() {
         }),
       );
     } catch (error) {
+      // エージェント実行エラーの表示
       console.error(error);
       appendLine(
         "text-line--error",

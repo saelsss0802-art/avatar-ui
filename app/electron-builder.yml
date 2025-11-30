@@ -1,18 +1,22 @@
+# electron-builder のパッケージング設定
 appId: com.avatar-ui.app
 productName: avatar-ui
 
+# 出力先ディレクトリ
 directories:
   output: dist
 
+# パッケージに含めるファイル
 files:
-  - dist-electron/**
-  - dist/renderer/**
+  - dist-electron/**   # メインプロセスのビルド成果物
+  - dist/renderer/**   # レンダラーのビルド成果物
   - package.json
 
-asar: true
+asar: true  # ソースを asar アーカイブにまとめる
 
+# macOS 向け設定
 mac:
   target:
     - dmg
     - zip
-  electronLanguages: [ja, en]
+  electronLanguages: [ja, en]  # 含める言語（パッケージサイズ削減）

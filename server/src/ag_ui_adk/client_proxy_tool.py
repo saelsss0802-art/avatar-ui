@@ -1,6 +1,4 @@
-# src/ag_ui_adk/client_proxy_tool.py
-
-"""Client-side proxy tool implementation for AG-UI protocol tools."""
+# AG-UI プロトコルツール用クライアントサイドプロキシツールの実装
 
 import asyncio
 import json
@@ -23,13 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class ClientProxyTool(BaseTool):
-    """A proxy tool that bridges AG-UI protocol tools to ADK.
+    """AG-UI プロトコルツールを ADK に橋渡しするプロキシツール
 
-    This tool appears as a normal ADK tool to the agent, but when executed,
-    it emits AG-UI protocol events and waits for the client to execute
-    the actual tool and return results.
+    このツールはエージェントには通常の ADK ツールとして見えるが、
+    実行されると AG-UI プロトコルイベントを発行し、
+    クライアントが実際のツールを実行して結果を返すのを待つ。
 
-    Internally wraps LongRunningFunctionTool for proper ADK behavior.
+    内部的には適切な ADK 動作のために LongRunningFunctionTool をラップ。
     """
 
     def __init__(
@@ -37,14 +35,14 @@ class ClientProxyTool(BaseTool):
         ag_ui_tool: AGUITool,
         event_queue: asyncio.Queue
     ):
-        """Initialize the client proxy tool.
+        """クライアントプロキシツールを初期化
 
         Args:
-            ag_ui_tool: The AG-UI tool definition
-            event_queue: Queue to emit AG-UI events
+            ag_ui_tool: AG-UI ツール定義
+            event_queue: AG-UI イベントを発行するキュー
         """
-        # Initialize BaseTool with name and description
-        # All client-side tools are long-running for architectural simplicity
+        # 名前と説明で BaseTool を初期化
+        # アーキテクチャ上の簡潔さのため、すべてのクライアントサイドツールは長時間実行
         super().__init__(
             name=ag_ui_tool.name,
             description=ag_ui_tool.description,
@@ -54,15 +52,15 @@ class ClientProxyTool(BaseTool):
         self.ag_ui_tool = ag_ui_tool
         self.event_queue = event_queue
 
-        # Create dynamic function with proper parameter signatures for ADK inspection
-        # This allows ADK to extract parameters from user requests correctly
+        # ADK 検査用の適切なパラメータシグネチャを持つ動的関数を作成
+        # これにより ADK はユーザーリクエストからパラメータを正しく抽出できる
         sig_params = []
 
-        # Extract parameters from AG-UI tool schema
+        # AG-UI ツールスキーマからパラメータを抽出
         parameters = ag_ui_tool.parameters
         if isinstance(parameters, dict) and 'properties' in parameters:
             for param_name in parameters['properties'].keys():
-                # Create parameter with proper type annotation
+                # 適切な型注釈でパラメータを作成
                 sig_params.append(
                     inspect.Parameter(
                         param_name,
@@ -72,44 +70,44 @@ class ClientProxyTool(BaseTool):
                     )
                 )
 
-        # Create the async function that will be wrapped by LongRunningFunctionTool
+        # LongRunningFunctionTool にラップされる非同期関数を作成
         async def proxy_tool_func(**kwargs) -> Any:
-            # Access the original args and tool_context that were stored in run_async
+            # run_async に保存された元の args と tool_context にアクセス
             original_args = getattr(self, '_current_args', kwargs)
             original_tool_context = getattr(self, '_current_tool_context', None)
             return await self._execute_proxy_tool(original_args, original_tool_context)
 
-        # Set the function name, docstring, and signature to match the AG-UI tool
+        # AG-UI ツールに合わせて関数名、docstring、シグネチャを設定
         proxy_tool_func.__name__ = ag_ui_tool.name
         proxy_tool_func.__doc__ = ag_ui_tool.description
 
-        # Create new signature with extracted parameters
+        # 抽出したパラメータで新しいシグネチャを作成
         if sig_params:
             proxy_tool_func.__signature__ = inspect.Signature(sig_params)
 
-        # Create the internal LongRunningFunctionTool for proper behavior
+        # 適切な動作のための内部 LongRunningFunctionTool を作成
         self._long_running_tool = LongRunningFunctionTool(proxy_tool_func)
 
     def _get_declaration(self) -> Optional[types.FunctionDeclaration]:
-        """Create FunctionDeclaration from AG-UI tool parameters.
+        """AG-UI ツールパラメータから FunctionDeclaration を作成
 
-        We override this instead of delegating to the wrapped tool because
-        the ADK's automatic function calling has difficulty parsing our
-        dynamically created function signature without proper type annotations.
+        ラップしたツールに委譲せずにオーバーライドするのは、
+        ADK の自動関数呼び出しが適切な型注釈なしに動的に作成した
+        関数シグネチャを解析するのが困難なため。
         """
         logger.debug(f"_get_declaration called for {self.name}")
         logger.debug(f"AG-UI tool parameters: {self.ag_ui_tool.parameters}")
 
-        # Convert AG-UI parameters (JSON Schema) to ADK format
+        # AG-UI パラメータ（JSON Schema）を ADK フォーマットに変換
         parameters = self.ag_ui_tool.parameters
 
 
-        # Ensure it's a proper object schema
+        # 適切なオブジェクトスキーマであることを確認
         if not isinstance(parameters, dict):
             parameters = {"type": "object", "properties": {}}
             logger.warning(f"Tool {self.name} had non-dict parameters, using empty schema")
 
-        # Create FunctionDeclaration
+        # FunctionDeclaration を作成
         function_declaration = types.FunctionDeclaration(
             name=self.name,
             description=self.description,
@@ -124,49 +122,49 @@ class ClientProxyTool(BaseTool):
         args: dict[str, Any],
         tool_context: Any
     ) -> Any:
-        """Execute the tool by delegating to the internal LongRunningFunctionTool.
+        """内部の LongRunningFunctionTool に委譲してツールを実行
 
         Args:
-            args: The arguments for the tool call
-            tool_context: The ADK tool context
+            args: ツールコールの引数
+            tool_context: ADK ツールコンテキスト
 
         Returns:
-            None for long-running tools (client handles execution)
+            長時間実行ツールの場合は None（クライアントが実行を処理）
         """
-        # Store args and context for proxy function access
+        # プロキシ関数アクセス用に args と context を保存
         self._current_args = args
         self._current_tool_context = tool_context
 
-        # Delegate to the wrapped long-running tool
+        # ラップした長時間実行ツールに委譲
         return await self._long_running_tool.run_async(args=args, tool_context=tool_context)
 
     async def _execute_proxy_tool(self, args: Dict[str, Any], tool_context: Any) -> Any:
-        """Execute the proxy tool logic - emit events and return None.
+        """プロキシツールロジックを実行 - イベントを発行して None を返す
 
         Args:
-            args: Tool arguments from ADK
-            tool_context: ADK tool context
+            args: ADK からのツール引数
+            tool_context: ADK ツールコンテキスト
 
         Returns:
-            None for long-running tools
+            長時間実行ツールの場合は None
         """
         logger.debug(f"Proxy tool execution: {self.ag_ui_tool.name}")
         logger.debug(f"Arguments received: {args}")
         logger.debug(f"Tool context type: {type(tool_context)}")
 
-        # Extract ADK-generated function call ID if available
+        # 利用可能であれば ADK が生成した関数コール ID を抽出
         adk_function_call_id = None
         if tool_context and hasattr(tool_context, 'function_call_id'):
             adk_function_call_id = tool_context.function_call_id
             logger.debug(f"Using ADK function_call_id: {adk_function_call_id}")
 
-        # Use ADK ID if available, otherwise fall back to generated ID
+        # ADK ID が利用可能ならそれを使用、そうでなければ生成した ID にフォールバック
         tool_call_id = adk_function_call_id or f"call_{uuid.uuid4().hex[:8]}"
         if not adk_function_call_id:
             logger.warning(f"ADK function_call_id not available, generated: {tool_call_id}")
 
         try:
-            # Emit TOOL_CALL_START event
+            # TOOL_CALL_START イベントを発行
             start_event = ToolCallStartEvent(
                 type=EventType.TOOL_CALL_START,
                 tool_call_id=tool_call_id,
@@ -175,7 +173,7 @@ class ClientProxyTool(BaseTool):
             await self.event_queue.put(start_event)
             logger.debug(f"Emitted TOOL_CALL_START for {tool_call_id}")
 
-            # Emit TOOL_CALL_ARGS event
+            # TOOL_CALL_ARGS イベントを発行
             args_json = json.dumps(args)
             args_event = ToolCallArgsEvent(
                 type=EventType.TOOL_CALL_ARGS,
@@ -185,7 +183,7 @@ class ClientProxyTool(BaseTool):
             await self.event_queue.put(args_event)
             logger.debug(f"Emitted TOOL_CALL_ARGS for {tool_call_id}")
 
-            # Emit TOOL_CALL_END event
+            # TOOL_CALL_END イベントを発行
             end_event = ToolCallEndEvent(
                 type=EventType.TOOL_CALL_END,
                 tool_call_id=tool_call_id
@@ -193,7 +191,7 @@ class ClientProxyTool(BaseTool):
             await self.event_queue.put(end_event)
             logger.debug(f"Emitted TOOL_CALL_END for {tool_call_id}")
 
-            # Return None for long-running tools - client handles the actual execution
+            # 長時間実行ツールは None を返す - クライアントが実際の実行を処理
             logger.debug(f"Returning None for long-running tool {tool_call_id}")
             return None
 
@@ -202,5 +200,5 @@ class ClientProxyTool(BaseTool):
             raise
 
     def __repr__(self) -> str:
-        """String representation of the proxy tool."""
+        """プロキシツールの文字列表現"""
         return f"ClientProxyTool(name='{self.name}', ag_ui_tool='{self.ag_ui_tool.name}')"

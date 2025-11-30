@@ -1,3 +1,4 @@
+// タイピング表示・リップシンク・ビープ音をまとめて制御するレンダリングエンジン
 import { config } from "../config";
 
 export type MarkdownRenderer = (md: string) => string;
@@ -84,6 +85,7 @@ export class TerminalEngine {
     this.updateAvatar(false);
   }
 
+  // メインループ開始（requestAnimationFrame を使用）
   private start() {
     const loop = (timestamp: number) => {
       this.tick(timestamp);
@@ -92,6 +94,7 @@ export class TerminalEngine {
     this.rafId = requestAnimationFrame(loop);
   }
 
+  // 毎フレーム実行: タイピング・リップシンク処理
   private tick(timestamp: number) {
     const { typeSpeed, mouthInterval } = config.ui;
 
@@ -115,7 +118,7 @@ export class TerminalEngine {
       this.isTyping = false;
     }
 
-    // 2. アバターのアニメーション (口パク)
+    // 2. アバターのアニメーション (リップシンク)
     if (this.isTyping) {
       if (timestamp - this.lastMouthTime >= mouthInterval) {
         this.isMouthOpen = !this.isMouthOpen; // 反転
@@ -131,6 +134,7 @@ export class TerminalEngine {
     }
   }
 
+  // アバター画像の切り替え（口パクアニメーション）
   private updateAvatar(isOpen: boolean) {
     const nextSrc = isOpen ? this.talkSrc : this.idleSrc;
     if (this.avatarImg.src !== nextSrc) { // チラつき防止
@@ -138,8 +142,9 @@ export class TerminalEngine {
     }
   }
 
-  // --- Sound Logic (簡易実装) ---
+  // --- 音声処理 ---
   
+  // AudioContext の初期化（ユーザー操作後に呼び出す）
   private initAudio() {
     if (this.audioCtx) return;
     try {
@@ -152,6 +157,7 @@ export class TerminalEngine {
     }
   }
 
+  // タイプ音を再生（1文字ごとに呼ばれる）
   private playBeep() {
     if (!this.audioCtx || !this.gainNode) return;
     if (this.audioCtx.state === "suspended") {
@@ -164,15 +170,13 @@ export class TerminalEngine {
     this.gainNode.gain.setValueAtTime(soundVolume, this.audioCtx.currentTime);
     
     const osc = this.audioCtx.createOscillator();
-    osc.type = "square";
+    osc.type = "square"; // 矩形波でタイプ音を表現
     osc.frequency.value = beepFrequency; 
     
     osc.connect(this.gainNode);
     osc.start();
 
-    // 音を止める（プチッという音を防ぐため、少しフェードアウトさせても良いが、
-    // レトロ感重視ならスパッと切っても良い。
-    // ここではユーザー指定の beepVolumeEnd があるので、duration の最後に向けて音量を下げる実装例）
+    // 音を止める（beepVolumeEnd を使って終端だけ音量を絞る）
     if (beepVolumeEnd > 0) {
         this.gainNode.gain.exponentialRampToValueAtTime(beepVolumeEnd, this.audioCtx.currentTime + beepDuration);
     }

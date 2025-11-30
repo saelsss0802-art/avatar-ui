@@ -1,6 +1,4 @@
-# src/adk_agent.py
-
-"""Main ADKAgent implementation for bridging AG-UI Protocol with Google ADK."""
+# AG-UI プロトコルと Google ADK を橋渡しする ADKAgent の実装
 
 from typing import Optional, Dict, Callable, Any, AsyncGenerator, List
 import time
@@ -34,66 +32,66 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ADKAgent:
-    """Middleware to bridge AG-UI Protocol with Google ADK agents.
+    """AG-UI プロトコルと Google ADK エージェントを橋渡しするミドルウェア
     
-    This agent translates between the AG-UI protocol events and Google ADK events,
-    managing sessions, state, and the lifecycle of ADK agents.
+    AG-UI プロトコルイベントと Google ADK イベントを相互変換し、
+    セッション、状態、ADK エージェントのライフサイクルを管理する。
     """
     
     def __init__(
         self,
-        # ADK Agent instance
+        # ADK エージェントインスタンス
         adk_agent: BaseAgent,
         
-        # App identification
+        # アプリ識別
         app_name: Optional[str] = None,
         session_timeout_seconds: Optional[int] = 1200,
         app_name_extractor: Optional[Callable[[RunAgentInput], str]] = None,
         
-        # User identification
+        # ユーザー識別
         user_id: Optional[str] = None,
         user_id_extractor: Optional[Callable[[RunAgentInput], str]] = None,
         
-        # ADK Services
+        # ADK サービス
         session_service: Optional[BaseSessionService] = None,
         artifact_service: Optional[BaseArtifactService] = None,
         memory_service: Optional[BaseMemoryService] = None,
         credential_service: Optional[BaseCredentialService] = None,
         
-        # Configuration
+        # 設定
         run_config_factory: Optional[Callable[[RunAgentInput], ADKRunConfig]] = None,
         use_in_memory_services: bool = True,
         
-        # Tool configuration
-        execution_timeout_seconds: int = 600,  # 10 minutes
-        tool_timeout_seconds: int = 300,  # 5 minutes
+        # ツール設定
+        execution_timeout_seconds: int = 600,  # 10分
+        tool_timeout_seconds: int = 300,  # 5分
         max_concurrent_executions: int = 10,
         
-        # Session cleanup configuration
-        cleanup_interval_seconds: int = 300  # 5 minutes default
+        # セッションクリーンアップ設定
+        cleanup_interval_seconds: int = 300  # 5分デフォルト
     ):
-        """Initialize the ADKAgent.
+        """ADKAgent を初期化
         
         Args:
-            adk_agent: The ADK agent instance to use
-            app_name: Static application name for all requests
-            app_name_extractor: Function to extract app name dynamically from input
-            user_id: Static user ID for all requests
-            user_id_extractor: Function to extract user ID dynamically from input
-            session_service: Session management service (defaults to InMemorySessionService)
-            artifact_service: File/artifact storage service
-            memory_service: Conversation memory and search service (also enables automatic session memory)
-            credential_service: Authentication credential storage
-            run_config_factory: Function to create RunConfig per request
-            use_in_memory_services: Use in-memory implementations for unspecified services
-            execution_timeout_seconds: Timeout for entire execution
-            tool_timeout_seconds: Timeout for individual tool calls
-            max_concurrent_executions: Maximum concurrent background executions
+            adk_agent: 使用する ADK エージェントインスタンス
+            app_name: すべてのリクエストに対する静的アプリケーション名
+            app_name_extractor: 入力から動的にアプリ名を抽出する関数
+            user_id: すべてのリクエストに対する静的ユーザー ID
+            user_id_extractor: 入力から動的にユーザー ID を抽出する関数
+            session_service: セッション管理サービス（デフォルト: InMemorySessionService）
+            artifact_service: ファイル/アーティファクトストレージサービス
+            memory_service: 会話メモリと検索サービス（自動セッションメモリも有効化）
+            credential_service: 認証クレデンシャルストレージ
+            run_config_factory: リクエストごとに RunConfig を作成する関数
+            use_in_memory_services: 未指定サービスにインメモリ実装を使用
+            execution_timeout_seconds: 実行全体のタイムアウト
+            tool_timeout_seconds: 個別ツールコールのタイムアウト
+            max_concurrent_executions: 最大同時バックグラウンド実行数
         """
         if app_name and app_name_extractor:
             raise ValueError("Cannot specify both 'app_name' and 'app_name_extractor'")
         
-        # app_name, app_name_extractor, or neither (use agent name as default)
+        # app_name, app_name_extractor, またはどちらも指定しない（エージェント名をデフォルトとして使用）
         
         if user_id and user_id_extractor:
             raise ValueError("Cannot specify both 'user_id' and 'user_id_extractor'")
@@ -105,70 +103,70 @@ class ADKAgent:
         self._user_id_extractor = user_id_extractor
         self._run_config_factory = run_config_factory or self._default_run_config
         
-        # Initialize services with intelligent defaults
+        # インテリジェントなデフォルトでサービスを初期化
         if use_in_memory_services:
             self._artifact_service = artifact_service or InMemoryArtifactService()
             self._memory_service = memory_service or InMemoryMemoryService()
             self._credential_service = credential_service or InMemoryCredentialService()
         else:
-            # Require explicit services for production
+            # 本番環境では明示的なサービスが必要
             self._artifact_service = artifact_service
             self._memory_service = memory_service
             self._credential_service = credential_service
         
         
-        # Session lifecycle management - use singleton
-        # Use provided session service or create default based on use_in_memory_services
+        # セッションライフサイクル管理 - シングルトンを使用
+        # 提供されたセッションサービスを使用するか、use_in_memory_services に基づいてデフォルトを作成
         if session_service is None:
-            session_service = InMemorySessionService()  # Default for both dev and production
+            session_service = InMemorySessionService()  # dev と本番の両方でデフォルト
             
         self._session_manager = SessionManager.get_instance(
             session_service=session_service,
-            memory_service=self._memory_service,  # Pass memory service for automatic session memory
-            session_timeout_seconds=session_timeout_seconds,  # 20 minutes default
+            memory_service=self._memory_service,  # 自動セッションメモリ用にメモリサービスを渡す
+            session_timeout_seconds=session_timeout_seconds,  # 20分デフォルト
             cleanup_interval_seconds=cleanup_interval_seconds,
-            max_sessions_per_user=None,    # No limit by default
-            auto_cleanup=True              # Enable by default
+            max_sessions_per_user=None,    # デフォルトは無制限
+            auto_cleanup=True              # デフォルトで有効
         )
         
-        # Tool execution tracking
+        # ツール実行追跡
         self._active_executions: Dict[str, ExecutionState] = {}
         self._execution_timeout = execution_timeout_seconds
         self._tool_timeout = tool_timeout_seconds
         self._max_concurrent = max_concurrent_executions
         self._execution_lock = asyncio.Lock()
 
-        # Session lookup cache for efficient session ID to metadata mapping
-        # Maps session_id -> {"app_name": str, "user_id": str}
+        # 効率的なセッション ID からメタデータへのマッピング用キャッシュ
+        # session_id -> {"app_name": str, "user_id": str} をマップ
         self._session_lookup_cache: Dict[str, Dict[str, str]] = {}
         
-        # Event translator will be created per-session for thread safety
+        # イベントトランスレーターはスレッドセーフのためセッションごとに作成
         
-        # Cleanup is managed by the session manager
-        # Will start when first async operation runs
+        # クリーンアップはセッションマネージャーが管理
+        # 最初の非同期操作実行時に開始
 
     def _get_session_metadata(self, session_id: str) -> Optional[Dict[str, str]]:
-        """Get session metadata (app_name, user_id) for a session ID efficiently.
+        """セッション ID からセッションメタデータ (app_name, user_id) を効率的に取得
 
         Args:
-            session_id: The session ID to lookup
+            session_id: 検索するセッション ID
 
         Returns:
-            Dictionary with app_name and user_id, or None if not found
+            app_name と user_id を含む辞書、見つからない場合は None
         """
-        # Try cache first for O(1) lookup
+        # まずキャッシュを試す（O(1) ルックアップ）
         if session_id in self._session_lookup_cache:
             return self._session_lookup_cache[session_id]
 
-        # Fallback to linear search if not in cache (for existing sessions)
-        # This maintains backward compatibility
+        # キャッシュにない場合は線形探索にフォールバック（既存セッション用）
+        # 後方互換性を維持
         try:
             for uid, keys in self._session_manager._user_sessions.items():
                 for key in keys:
                     if key.endswith(f":{session_id}"):
                         app_name = key.split(':', 1)[0]
                         metadata = {"app_name": app_name, "user_id": uid}
-                        # Cache for future lookups
+                        # 将来のルックアップ用にキャッシュ
                         self._session_lookup_cache[session_id] = metadata
                         return metadata
         except Exception as e:
@@ -177,7 +175,7 @@ class ADKAgent:
         return None
     
     def _get_app_name(self, input: RunAgentInput) -> str:
-        """Resolve app name with clear precedence."""
+        """明確な優先順位でアプリ名を解決"""
         if self._static_app_name:
             return self._static_app_name
         elif self._app_name_extractor:
@@ -186,8 +184,8 @@ class ADKAgent:
             return self._default_app_extractor(input)
     
     def _default_app_extractor(self, input: RunAgentInput) -> str:
-        """Default app extraction logic - use agent name directly."""
-        # Use the ADK agent's name as app name
+        """デフォルトのアプリ抽出ロジック - エージェント名を直接使用"""
+        # ADK エージェントの名前をアプリ名として使用
         try:
             return self._adk_agent.name
         except Exception as e:
@@ -195,7 +193,7 @@ class ADKAgent:
             return "AG-UI ADK Agent"
     
     def _get_user_id(self, input: RunAgentInput) -> str:
-        """Resolve user ID with clear precedence."""
+        """明確な優先順位でユーザー ID を解決"""
         if self._static_user_id:
             return self._static_user_id
         elif self._user_id_extractor:
@@ -204,22 +202,22 @@ class ADKAgent:
             return self._default_user_extractor(input)
     
     def _default_user_extractor(self, input: RunAgentInput) -> str:
-        """Default user extraction logic."""
-        # Use thread_id as default (assumes thread per user)
+        """デフォルトのユーザー抽出ロジック"""
+        # デフォルトで thread_id を使用（スレッドごとにユーザーを想定）
         return f"thread_user_{input.thread_id}"
     
     async def _add_pending_tool_call_with_context(self, session_id: str, tool_call_id: str, app_name: str, user_id: str):
-        """Add a tool call to the session's pending list for HITL tracking.
+        """HITL 追跡用にセッションの保留リストにツールコールを追加
 
         Args:
-            session_id: The session ID (thread_id)
-            tool_call_id: The tool call ID to track
-            app_name: App name (for session lookup)
-            user_id: User ID (for session lookup)
+            session_id: セッション ID (thread_id)
+            tool_call_id: 追跡するツールコール ID
+            app_name: アプリ名（セッションルックアップ用）
+            user_id: ユーザー ID（セッションルックアップ用）
         """
         logger.debug(f"Adding pending tool call {tool_call_id} for session {session_id}, app_name={app_name}, user_id={user_id}")
         try:
-            # Get current pending calls using SessionManager
+            # SessionManager を使用して現在の保留コールを取得
             pending_calls = await self._session_manager.get_state_value(
                 session_id=session_id,
                 app_name=app_name,
@@ -228,11 +226,11 @@ class ADKAgent:
                 default=[]
             )
 
-            # Add new tool call if not already present
+            # まだ存在しなければ新しいツールコールを追加
             if tool_call_id not in pending_calls:
                 pending_calls.append(tool_call_id)
 
-                # Update the state using SessionManager
+                # SessionManager を使用して状態を更新
                 success = await self._session_manager.set_state_value(
                     session_id=session_id,
                     app_name=app_name,
@@ -247,23 +245,23 @@ class ADKAgent:
             logger.error(f"Failed to add pending tool call {tool_call_id} to session {session_id}: {e}")
 
     async def _remove_pending_tool_call(self, session_id: str, tool_call_id: str):
-        """Remove a tool call from the session's pending list.
+        """セッションの保留リストからツールコールを削除
 
-        Uses efficient session lookup to find the session without needing explicit app_name/user_id.
+        明示的な app_name/user_id なしでセッションを見つける効率的なセッションルックアップを使用
 
         Args:
-            session_id: The session ID (thread_id)
-            tool_call_id: The tool call ID to remove
+            session_id: セッション ID (thread_id)
+            tool_call_id: 削除するツールコール ID
         """
         try:
-            # Use efficient session metadata lookup
+            # 効率的なセッションメタデータルックアップを使用
             metadata = self._get_session_metadata(session_id)
 
             if metadata:
                 app_name = metadata["app_name"]
                 user_id = metadata["user_id"]
 
-                # Get current pending calls using SessionManager
+                # SessionManager を使用して現在の保留コールを取得
                 pending_calls = await self._session_manager.get_state_value(
                     session_id=session_id,
                     app_name=app_name,
@@ -272,11 +270,11 @@ class ADKAgent:
                     default=[]
                 )
 
-                # Remove tool call if present
+                # ツールコールが存在すれば削除
                 if tool_call_id in pending_calls:
                     pending_calls.remove(tool_call_id)
 
-                    # Update the state using SessionManager
+                    # SessionManager を使用して状態を更新
                     success = await self._session_manager.set_state_value(
                         session_id=session_id,
                         app_name=app_name,
@@ -291,7 +289,7 @@ class ADKAgent:
             logger.error(f"Failed to remove pending tool call {tool_call_id} from session {session_id}: {e}")
     
     async def _get_pending_tool_call_ids(self, session_id: str) -> Optional[List[str]]:
-        """Fetch the pending tool call identifiers tracked for a session."""
+        """セッションで追跡されている保留ツールコール識別子を取得"""
         try:
             metadata = self._get_session_metadata(session_id)
 
@@ -314,13 +312,13 @@ class ADKAgent:
         return None
 
     async def _has_pending_tool_calls(self, session_id: str) -> bool:
-        """Check if session has pending tool calls (HITL scenario).
+        """セッションに保留ツールコールがあるかチェック（HITL シナリオ）
 
         Args:
-            session_id: The session ID (thread_id)
+            session_id: セッション ID (thread_id)
 
         Returns:
-            True if session has pending tool calls
+            保留ツールコールがある場合 True
         """
         pending_calls = await self._get_pending_tool_call_ids(session_id)
         if pending_calls is None:
@@ -330,7 +328,7 @@ class ADKAgent:
     
     
     def _default_run_config(self, input: RunAgentInput) -> ADKRunConfig:
-        """Create default RunConfig with SSE streaming enabled."""
+        """SSE ストリーミングを有効にしたデフォルト RunConfig を作成"""
         return ADKRunConfig(
             streaming_mode=StreamingMode.SSE,
             save_input_blobs_as_artifacts=True
@@ -338,7 +336,7 @@ class ADKAgent:
     
     
     def _create_runner(self, adk_agent: BaseAgent, user_id: str, app_name: str) -> Runner:
-        """Create a new runner instance."""
+        """新しいランナーインスタンスを作成"""
         return Runner(
             app_name=app_name,
             agent=adk_agent,
@@ -349,22 +347,22 @@ class ADKAgent:
         )
     
     async def run(self, input: RunAgentInput) -> AsyncGenerator[BaseEvent, None]:
-        """Run the ADK agent with client-side tool support.
+        """クライアントサイドツールサポート付きで ADK エージェントを実行
         
-        All client-side tools are long-running. For tool result submissions,
-        we continue existing executions. For new requests, we start new executions.
-        ADK sessions handle conversation continuity and tool result processing.
+        すべてのクライアントサイドツールは長時間実行。ツール結果送信の場合は
+        既存の実行を継続。新規リクエストの場合は新しい実行を開始。
+        ADK セッションが会話の継続性とツール結果処理を担当。
         
         Args:
-            input: The AG-UI run input
+            input: AG-UI 実行入力
             
         Yields:
-            AG-UI protocol events
+            AG-UI プロトコルイベント
         """
         unseen_messages = await self._get_unseen_messages(input)
 
         if not unseen_messages:
-            # No unseen messages – fall through to normal execution handling
+            # 未読メッセージなし - 通常の実行処理にフォールスルー
             async for event in self._start_new_execution(input):
                 yield event
             return
@@ -417,13 +415,13 @@ class ADKAgent:
                     skip_tool_message_batch = False
                     continue
 
-                # Peek ahead: if there's a non-tool message following, collect it too
-                # This allows sending FunctionResponse + user message in ONE invocation
+                # 先読み: ツール以外のメッセージが後続にあれば、それも収集
+                # これにより FunctionResponse + ユーザーメッセージを1回の呼び出しで送信可能
                 trailing_messages: List[Any] = []
                 trailing_assistant_ids: List[str] = []
                 temp_index = index
 
-                # Collect all trailing non-tool messages (skip assistant messages, collect user/system)
+                # すべての後続非ツールメッセージを収集（assistant はスキップ、user/system を収集）
                 while temp_index < total_unseen and getattr(unseen_messages[temp_index], "role", None) != "tool":
                     candidate = unseen_messages[temp_index]
                     candidate_role = getattr(candidate, "role", None)
@@ -437,7 +435,7 @@ class ADKAgent:
 
                     temp_index += 1
 
-                # If we found trailing messages, advance index and mark assistants as processed
+                # 後続メッセージが見つかった場合、インデックスを進めて assistant を処理済みにマーク
                 if trailing_messages or trailing_assistant_ids:
                     index = temp_index
 
@@ -491,17 +489,17 @@ class ADKAgent:
                     yield event
     
     async def _ensure_session_exists(self, app_name: str, user_id: str, session_id: str, initial_state: dict):
-        """Ensure a session exists, creating it if necessary via session manager."""
+        """セッションが存在することを確認し、必要に応じてセッションマネージャー経由で作成"""
         try:
-            # Use session manager to get or create session
+            # セッションマネージャーを使用してセッションを取得または作成
             adk_session = await self._session_manager.get_or_create_session(
                 session_id=session_id,
-                app_name=app_name,  # Use app_name for session management
+                app_name=app_name,  # セッション管理に app_name を使用
                 user_id=user_id,
                 initial_state=initial_state
             )
 
-            # Update session lookup cache for efficient session ID to metadata mapping
+            # 効率的なセッション ID からメタデータへのマッピング用にキャッシュを更新
             self._session_lookup_cache[session_id] = {
                 "app_name": app_name,
                 "user_id": user_id
@@ -518,13 +516,13 @@ class ADKAgent:
         input: RunAgentInput,
         messages: Optional[List[Any]] = None,
     ) -> Optional[types.Content]:
-        """Convert the latest user message to ADK Content format."""
+        """最新のユーザーメッセージを ADK Content フォーマットに変換"""
         target_messages = messages if messages is not None else input.messages
 
         if not target_messages:
             return None
 
-        # Get the latest user message
+        # 最新のユーザーメッセージを取得
         for message in reversed(target_messages):
             if getattr(message, "role", None) == "user" and getattr(message, "content", None):
                 return types.Content(
@@ -536,11 +534,10 @@ class ADKAgent:
     
     
     async def _get_unseen_messages(self, input: RunAgentInput) -> List[Any]:
-        """Return messages that have not yet been processed for this session.
+        """このセッションでまだ処理されていないメッセージを返す
 
-        Filters out ALL processed messages, not just stopping at the first one.
-        This handles out-of-order message processing (e.g., LRO tool results arriving
-        after subsequent user messages).
+        最初の1つで止まらず、すべての処理済みメッセージをフィルタリング。
+        順序外のメッセージ処理に対応（例：LRO ツール結果が後続のユーザーメッセージの後に到着）。
         """
         if not input.messages:
             return []
@@ -549,7 +546,7 @@ class ADKAgent:
         session_id = input.thread_id
         processed_ids = self._session_manager.get_processed_message_ids(app_name, session_id)
 
-        # Filter out all processed messages, maintaining chronological order
+        # すべての処理済みメッセージをフィルタリングし、時系列順を維持
         unseen: List[Any] = []
         for message in input.messages:
             message_id = getattr(message, "id", None)
@@ -560,7 +557,7 @@ class ADKAgent:
         return unseen
 
     def _collect_message_ids(self, messages: List[Any]) -> List[str]:
-        """Extract message IDs from messages, skipping those without IDs."""
+        """メッセージから ID を抽出（ID がないものはスキップ）"""
         return [getattr(message, "id") for message in messages if getattr(message, "id", None)]
 
     async def _is_tool_result_submission(
@@ -568,14 +565,14 @@ class ADKAgent:
         input: RunAgentInput,
         unseen_messages: Optional[List[Any]] = None,
     ) -> bool:
-        """Check if this request contains tool results.
+        """このリクエストにツール結果が含まれているかチェック
 
         Args:
-            input: The run input
-            unseen_messages: Optional list of unseen messages to inspect
+            input: 実行入力
+            unseen_messages: 検査する未読メッセージのオプションリスト
 
         Returns:
-            True if all unseen messages are tool results
+            すべての未読メッセージがツール結果の場合 True
         """
         unseen_messages = unseen_messages if unseen_messages is not None else await self._get_unseen_messages(input)
 
@@ -593,24 +590,24 @@ class ADKAgent:
         trailing_messages: Optional[List[Any]] = None,
         include_message_batch: bool = True,
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Handle tool result submission for existing execution.
+        """既存の実行に対するツール結果送信を処理
 
         Args:
-            input: The run input containing tool results
-            tool_messages: Optional pre-filtered tool messages to consider
-            trailing_messages: Optional messages that follow the tool batch (e.g., user message)
-            include_message_batch: Whether to forward the candidate messages to the execution
+            input: ツール結果を含む実行入力
+            tool_messages: 考慮する事前フィルタ済みツールメッセージ（オプション）
+            trailing_messages: ツールバッチの後に続くメッセージ（例：ユーザーメッセージ）
+            include_message_batch: 候補メッセージを実行に転送するかどうか
 
         Yields:
-            AG-UI events from continued execution
+            継続実行からの AG-UI イベント
         """
         thread_id = input.thread_id
 
-        # Extract tool results that are sent by the frontend
+        # フロントエンドから送信されたツール結果を抽出
         candidate_messages = tool_messages if tool_messages is not None else await self._get_unseen_messages(input)
         tool_results = await self._extract_tool_results(input, candidate_messages)
 
-        # if the tool results are not sent by the fronted then call the tool function
+        # フロントエンドからツール結果が送信されていない場合
         if not tool_results:
             logger.error(f"Tool result submission without tool results for thread {thread_id}")
             yield RunErrorEvent(
@@ -621,26 +618,26 @@ class ADKAgent:
             return
 
         try:
-            # Remove tool calls from pending list
+            # 保留リストからツールコールを削除
             for tool_result in tool_results:
                 tool_call_id = tool_result['message'].tool_call_id
                 has_pending = await self._has_pending_tool_calls(thread_id)
 
                 if has_pending:
-                    # Could add more specific check here for the exact tool_call_id
-                    # but for now just log that we're processing a tool result while tools are pending
+                    # ここで正確な tool_call_id のより具体的なチェックを追加可能だが
+                    # 現時点ではツールが保留中にツール結果を処理していることをログに記録
                     logger.debug(f"Processing tool result {tool_call_id} for thread {thread_id} with pending tools")
-                    # Remove from pending tool calls now that we're processing it
+                    # 処理中なので保留ツールコールから削除
                     await self._remove_pending_tool_call(thread_id, tool_call_id)
                 else:
-                    # No pending tools - this could be a stale result or from a different session
+                    # 保留ツールなし - 古い結果か別のセッションからの可能性
                     logger.warning(f"No pending tool calls found for tool result {tool_call_id} in thread {thread_id}")
 
-            # Since all tools are long-running, all tool results are standalone
-            # and should start new executions with the tool results
+            # すべてのツールは長時間実行なので、すべてのツール結果はスタンドアロンであり
+            # ツール結果を使用して新しい実行を開始すべき
             logger.info(f"Starting new execution for tool result in thread {thread_id}")
 
-            # Use trailing_messages if provided, otherwise fall back to candidate_messages
+            # trailing_messages が提供されていればそれを使用、そうでなければ candidate_messages にフォールバック
             message_batch = trailing_messages if trailing_messages else (candidate_messages if include_message_batch else None)
 
             async for event in self._start_new_execution(
@@ -663,19 +660,19 @@ class ADKAgent:
         input: RunAgentInput,
         candidate_messages: Optional[List[Any]] = None,
     ) -> List[Dict]:
-        """Extract tool messages with their names from input.
+        """入力からツール名付きツールメッセージを抽出
 
-        Only extracts tool messages provided in candidate_messages. When no
-        candidates are supplied, all messages are considered.
+        candidate_messages で提供されたツールメッセージのみ抽出。
+        候補が提供されていない場合、すべてのメッセージを考慮。
 
         Args:
-            input: The run input
-            candidate_messages: Optional subset of messages to inspect
+            input: 実行入力
+            candidate_messages: 検査するメッセージのサブセット（オプション）
 
         Returns:
-            List of dicts containing tool name and message ordered chronologically
+            ツール名とメッセージを含む辞書のリスト（時系列順）
         """
-        # Create a mapping of tool_call_id to tool name
+        # tool_call_id からツール名へのマッピングを作成
         tool_call_map = {}
         for message in input.messages:
             if hasattr(message, 'tool_calls') and message.tool_calls:
@@ -705,13 +702,13 @@ class ADKAgent:
         self, 
         execution: ExecutionState
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Stream events from execution queue.
+        """実行キューからイベントをストリーミング
         
         Args:
-            execution: The execution state
+            execution: 実行状態
             
         Yields:
-            AG-UI events from the queue
+            キューからの AG-UI イベント
         """
         logger.debug(f"Starting _stream_events for thread {execution.thread_id}, queue ID: {id(execution.event_queue)}")
         event_count = 0
@@ -721,17 +718,17 @@ class ADKAgent:
             try:
                 logger.debug(f"Waiting for event from queue (thread {execution.thread_id}, queue size: {execution.event_queue.qsize()})")
                 
-                # Wait for event with timeout
+                # タイムアウト付きでイベントを待機
                 event = await asyncio.wait_for(
                     execution.event_queue.get(),
-                    timeout=1.0  # Check every second
+                    timeout=1.0  # 毎秒チェック
                 )
                 
                 event_count += 1
                 logger.debug(f"Got event #{event_count} from queue: {type(event).__name__ if event else 'None'} (thread {execution.thread_id})")
 
                 if event is None:
-                    # Execution complete
+                    # 実行完了
                     execution.is_complete = True
                     logger.debug(f"Execution complete for thread {execution.thread_id} after {event_count} events")
                     break
@@ -743,7 +740,7 @@ class ADKAgent:
                 timeout_count += 1
                 logger.debug(f"Timeout #{timeout_count} waiting for events (thread {execution.thread_id}, task done: {execution.task.done()}, queue size: {execution.event_queue.qsize()})")
                 
-                # Check if execution is stale
+                # 実行が古くなっているかチェック
                 if execution.is_stale(self._execution_timeout):
                     logger.error(f"Execution timed out for thread {execution.thread_id}")
                     yield RunErrorEvent(
@@ -753,9 +750,9 @@ class ADKAgent:
                     )
                     break
                 
-                # Check if task is done
+                # タスクが完了しているかチェック
                 if execution.task.done():
-                    # Task completed but didn't send None
+                    # タスク完了したが None を送信していない
                     execution.is_complete = True
                     try:
                         task_result = execution.task.result()
@@ -763,7 +760,7 @@ class ADKAgent:
                     except Exception as e:
                         logger.debug(f"Task completed with exception: {e} (thread {execution.thread_id})")
                     
-                    # Wait a bit more in case there are events still coming
+                    # まだイベントが来ている可能性があるのでもう少し待機
                     logger.debug(f"Task done but no None signal - checking queue one more time (thread {execution.thread_id}, queue size: {execution.event_queue.qsize()})")
                     if execution.event_queue.qsize() > 0:
                         logger.debug(f"Found {execution.event_queue.qsize()} events in queue after task completion, continuing...")
@@ -779,16 +776,16 @@ class ADKAgent:
         tool_results: Optional[List[Dict]] = None,
         message_batch: Optional[List[Any]] = None,
     ) -> AsyncGenerator[BaseEvent, None]:
-        """Start a new ADK execution with tool support.
+        """ツールサポート付きで新しい ADK 実行を開始
 
         Args:
-            input: The run input
+            input: 実行入力
 
         Yields:
-            AG-UI events from the execution
+            実行からの AG-UI イベント
         """
         try:
-            # Emit RUN_STARTED
+            # RUN_STARTED を発行
             logger.debug(f"Emitting RUN_STARTED for thread {input.thread_id}, run {input.run_id}")
             yield RunStartedEvent(
                 type=EventType.RUN_STARTED,
@@ -796,10 +793,10 @@ class ADKAgent:
                 run_id=input.run_id
             )
             
-            # Check concurrent execution limit
+            # 同時実行制限をチェック
             async with self._execution_lock:
                 if len(self._active_executions) >= self._max_concurrent:
-                    # Clean up stale executions
+                    # 古い実行をクリーンアップ
                     await self._cleanup_stale_executions()
                     
                     if len(self._active_executions) >= self._max_concurrent:
@@ -807,10 +804,10 @@ class ADKAgent:
                             f"Maximum concurrent executions ({self._max_concurrent}) reached"
                         )
                 
-                # Check if there's an existing execution for this thread and wait for it
+                # このスレッドに既存の実行があるかチェックし、完了を待機
                 existing_execution = self._active_executions.get(input.thread_id)
 
-            # If there was an existing execution, wait for it to complete
+            # 既存の実行があれば、完了を待機
             if existing_execution and not existing_execution.is_complete:
                 logger.debug(f"Waiting for existing execution to complete for thread {input.thread_id}")
                 try:
@@ -818,32 +815,32 @@ class ADKAgent:
                 except Exception as e:
                     logger.debug(f"Previous execution completed with error: {e}")
             
-            # Start background execution
+            # バックグラウンド実行を開始
             execution = await self._start_background_execution(
                 input,
                 tool_results=tool_results,
                 message_batch=message_batch,
             )
             
-            # Store execution (replacing any previous one)
+            # 実行を保存（以前のものを置換）
             async with self._execution_lock:
                 self._active_executions[input.thread_id] = execution
             
-            # Stream events and track tool calls
+            # イベントをストリーミングしツールコールを追跡
             logger.debug(f"Starting to stream events for execution {execution.thread_id}")
             has_tool_calls = False
             tool_call_ids = []
 
             logger.debug(f"About to iterate over _stream_events for execution {execution.thread_id}")
             async for event in self._stream_events(execution):
-                # Track tool calls for HITL scenarios
+                # HITL シナリオ用にツールコールを追跡
                 if isinstance(event, ToolCallEndEvent):
                     logger.info(f"Detected ToolCallEndEvent with id: {event.tool_call_id}")
                     has_tool_calls = True
                     tool_call_ids.append(event.tool_call_id)
 
-                # backend tools will always emit ToolCallResultEvent
-                # If it is a backend tool then we don't need to add the tool_id in pending_tools
+                # バックエンドツールは常に ToolCallResultEvent を発行
+                # バックエンドツールの場合、pending_tools に tool_id を追加する必要なし
                 if isinstance(event, ToolCallResultEvent) and event.tool_call_id in tool_call_ids:
                     logger.info(f"Detected ToolCallResultEvent with id: {event.tool_call_id}")
                     tool_call_ids.remove(event.tool_call_id)
@@ -853,7 +850,7 @@ class ADKAgent:
 
             logger.debug(f"Finished iterating over _stream_events for execution {execution.thread_id}")
 
-            # If we found tool calls, add them to session state BEFORE cleanup
+            # ツールコールが見つかった場合、クリーンアップ前にセッション状態に追加
             if has_tool_calls:
                 app_name = self._get_app_name(input)
                 user_id = self._get_user_id(input)
@@ -863,7 +860,7 @@ class ADKAgent:
                     )
             logger.debug(f"Finished streaming events for execution {execution.thread_id}")
             
-            # Emit RUN_FINISHED
+            # RUN_FINISHED を発行
             logger.debug(f"Emitting RUN_FINISHED for thread {input.thread_id}, run {input.run_id}")
             yield RunFinishedEvent(
                 type=EventType.RUN_FINISHED,
@@ -879,13 +876,13 @@ class ADKAgent:
                 code="EXECUTION_ERROR"
             )
         finally:
-            # Clean up execution if complete and no pending tool calls (HITL scenarios)
+            # 完了かつ保留ツールコールなし（HITL シナリオ）の場合、実行をクリーンアップ
             async with self._execution_lock:
                 if input.thread_id in self._active_executions:
                     execution = self._active_executions[input.thread_id]
                     execution.is_complete = True
                     
-                    # Check if session has pending tool calls before cleanup
+                    # クリーンアップ前にセッションに保留ツールコールがあるかチェック
                     has_pending = await self._has_pending_tool_calls(input.thread_id)
                     if not has_pending:
                         del self._active_executions[input.thread_id]
@@ -900,36 +897,36 @@ class ADKAgent:
         tool_results: Optional[List[Dict]] = None,
         message_batch: Optional[List[Any]] = None,
     ) -> ExecutionState:
-        """Start ADK execution in background with tool support.
+        """ツールサポート付きでバックグラウンドで ADK 実行を開始
 
         Args:
-            input: The run input
+            input: 実行入力
 
         Returns:
-            ExecutionState tracking the background execution
+            バックグラウンド実行を追跡する ExecutionState
         """
         event_queue = asyncio.Queue()
         logger.debug(f"Created event queue {id(event_queue)} for thread {input.thread_id}")
-        # Extract necessary information
+        # 必要な情報を抽出
         user_id = self._get_user_id(input)
         app_name = self._get_app_name(input)
         
-        # Use the ADK agent directly
+        # ADK エージェントを直接使用
         adk_agent = self._adk_agent
         
-        # Prepare agent modifications (SystemMessage and tools)
+        # エージェントの変更を準備（SystemMessage とツール）
         agent_updates = {}
         
-        # Handle SystemMessage if it's the first message - append to agent instructions
+        # 最初のメッセージが SystemMessage の場合 - エージェントの instructions に追加
         if input.messages and isinstance(input.messages[0], SystemMessage):
             system_content = input.messages[0].content
             if system_content:
                 current_instruction = getattr(adk_agent, 'instruction', '') or ''
 
                 if callable(current_instruction):
-                    # Handle instructions provider
+                    # instructions プロバイダを処理
                     if inspect.iscoroutinefunction(current_instruction):
-                        # Async instruction provider
+                        # 非同期 instruction プロバイダ
                         async def instruction_provider_wrapper_async(*args, **kwargs):
                             instructions = system_content
                             original_instructions = await current_instruction(*args, **kwargs) or ''
@@ -938,7 +935,7 @@ class ADKAgent:
                             return instructions
                         new_instruction = instruction_provider_wrapper_async
                     else:
-                        # Sync instruction provider
+                        # 同期 instruction プロバイダ
                         def instruction_provider_wrapper_sync(*args, **kwargs):
                             instructions = system_content
                             original_instructions = current_instruction(*args, **kwargs) or ''
@@ -950,7 +947,7 @@ class ADKAgent:
                     logger.debug(
                         f"Will wrap callable InstructionProvider and append SystemMessage: '{system_content[:100]}...'")
                 else:
-                    # Handle string instructions
+                    # 文字列 instructions を処理
                     if current_instruction:
                         new_instruction = f"{current_instruction}\n\n{system_content}"
                     else:
@@ -959,19 +956,19 @@ class ADKAgent:
 
                 agent_updates['instruction'] = new_instruction
 
-        # Create dynamic toolset if tools provided and prepare tool updates
+        # ツールが提供されている場合は動的ツールセットを作成し、ツール更新を準備
         toolset = None
         if input.tools:
-            # Get existing tools from the agent
+            # エージェントから既存のツールを取得
             existing_tools = []
             if hasattr(adk_agent, 'tools') and adk_agent.tools:
                 existing_tools = list(adk_agent.tools) if isinstance(adk_agent.tools, (list, tuple)) else [adk_agent.tools]
             
-            # if same tool is defined in frontend and backend then agent will only use the backend tool
+            # フロントエンドとバックエンドで同じツールが定義されている場合、エージェントはバックエンドツールのみを使用
             input_tools = []
             for input_tool in input.tools:
-                # Check if this input tool's name matches any existing tool
-                # Also exclude this specific tool call "transfer_to_agent" which is used internally by the adk to handoff to other agents
+                # この入力ツールの名前が既存ツールと一致するかチェック
+                # ADK が他のエージェントにハンドオフするために内部で使用する "transfer_to_agent" も除外
                 if (not any(hasattr(existing_tool, '__name__') and input_tool.name == existing_tool.__name__
                         for existing_tool in existing_tools) and input_tool.name != 'transfer_to_agent'):
                     input_tools.append(input_tool)
@@ -981,17 +978,17 @@ class ADKAgent:
                 event_queue=event_queue
             )
 
-            # Combine existing tools with our proxy toolset
+            # 既存ツールとプロキシツールセットを結合
             combined_tools = existing_tools + [toolset]
             agent_updates['tools'] = combined_tools
             logger.debug(f"Will combine {len(existing_tools)} existing tools with proxy toolset")
         
-        # Create a single copy of the agent with all updates if any modifications needed
+        # 変更が必要な場合、すべての更新でエージェントの単一コピーを作成
         if agent_updates:
             adk_agent = adk_agent.model_copy(update=agent_updates)
             logger.debug(f"Created modified agent copy with updates: {list(agent_updates.keys())}")
         
-        # Create background task
+        # バックグラウンドタスクを作成
         logger.debug(f"Creating background task for thread {input.thread_id}")
         run_kwargs = {
             "input": input,
@@ -1026,40 +1023,41 @@ class ADKAgent:
         tool_results: Optional[List[Dict]] = None,
         message_batch: Optional[List[Any]] = None,
     ):
-        """Run ADK agent in background, emitting events to queue.
+        """バックグラウンドで ADK エージェントを実行し、キューにイベントを発行
 
         Args:
-            input: The run input
-            adk_agent: The ADK agent to run (already prepared with tools and SystemMessage)
-            user_id: User ID
-            app_name: App name
-            event_queue: Queue for emitting events
+            input: 実行入力
+            adk_agent: 実行する ADK エージェント（ツールと SystemMessage で準備済み）
+            user_id: ユーザー ID
+            app_name: アプリ名
+            event_queue: イベント発行用キュー
         """
         runner: Optional[Runner] = None
         try:
-            # Agent is already prepared with tools and SystemMessage instructions (if any)
-            # from _start_background_execution, so no additional agent copying needed here
+            # エージェントは _start_background_execution でツールと SystemMessage instructions で既に準備済み
+            # ここでの追加のエージェントコピーは不要
 
-            # Create runner
+            # ランナーを作成
             runner = self._create_runner(
                 adk_agent=adk_agent,
                 user_id=user_id,
                 app_name=app_name
             )
 
-            # Create RunConfig
+            # RunConfig を作成
             run_config = self._run_config_factory(input)
 
-            # Ensure session exists
+            # セッションが存在することを確認
             await self._ensure_session_exists(
                 app_name, user_id, input.thread_id, input.state
             )
 
-            # this will always update the backend states with the frontend states
-            # Recipe Demo Example: if there is a state "salt" in the ingredients state and in frontend user remove this salt state using UI from the ingredients list then our backend should also update these state changes as well to sync both the states
+            # これは常にバックエンドの状態をフロントエンドの状態で更新
+            # レシピデモ例: ingredients 状態に "salt" がある場合、フロントエンドでユーザーが UI から ingredients リストの salt を削除したら
+            # バックエンドもこれらの状態変更を更新して両方の状態を同期
             await self._session_manager.update_session_state(input.thread_id,app_name,user_id,input.state)
 
-            # Convert messages
+            # メッセージを変換
             unseen_messages = message_batch if message_batch is not None else await self._get_unseen_messages(input)
 
             active_tool_results: Optional[List[Dict]] = tool_results
@@ -1076,31 +1074,31 @@ class ADKAgent:
                 if message_ids:
                     self._session_manager.mark_messages_processed(app_name, input.thread_id, message_ids)
 
-            # Convert user messages first (if any)
+            # まずユーザーメッセージを変換（あれば）
             user_message = await self._convert_latest_message(input, unseen_messages if message_batch is not None else None)
 
-            # if there is a tool response submission by the user, add FunctionResponse to session first
+            # ユーザーによるツールレスポンス送信がある場合、まず FunctionResponse をセッションに追加
             if active_tool_results and user_message:
-                # We have BOTH tool results AND a user message
-                # Add FunctionResponse as a separate event to the session, then send user message
+                # ツール結果とユーザーメッセージの両方がある
+                # FunctionResponse を別のイベントとしてセッションに追加し、次にユーザーメッセージを送信
                 function_response_parts = []
                 for tool_msg in active_tool_results:
                     tool_call_id = tool_msg['message'].tool_call_id
                     content = tool_msg['message'].content
 
-                    # Debug: Log the actual tool message content we received
+                    # デバッグ: 受信した実際のツールメッセージ内容をログ
                     logger.debug(f"Received tool result for call {tool_call_id}: content='{content}', type={type(content)}")
 
-                    # Parse JSON content, handling empty or invalid JSON gracefully
+                    # JSON コンテンツをパース、空または無効な JSON を適切に処理
                     try:
                         if content and content.strip():
                             result = json.loads(content)
                         else:
-                            # Handle empty content as a success with empty result
+                            # 空のコンテンツを空の結果で成功として処理
                             result = {"success": True, "result": None}
                             logger.warning(f"Empty tool result content for tool call {tool_call_id}, using empty success result")
                     except json.JSONDecodeError as json_error:
-                        # Handle invalid JSON by providing detailed error result
+                        # 無効な JSON を詳細なエラー結果で処理
                         result = {
                             "error": f"Invalid JSON in tool result: {str(json_error)}",
                             "raw_content": content,
@@ -1119,7 +1117,7 @@ class ADKAgent:
                     )
                     function_response_parts.append(updated_function_response_part)
 
-                # Add FunctionResponse as separate event to session
+                # FunctionResponse を別のイベントとしてセッションに追加
                 session = await self._session_manager.get_or_create_session(
                     session_id=input.thread_id,
                     app_name=app_name,
@@ -1139,17 +1137,17 @@ class ADKAgent:
 
                 session.events.append(function_response_event)
 
-                # Mark user messages from message_batch as processed
+                # message_batch からのユーザーメッセージを処理済みにマーク
                 if message_batch:
                     user_message_ids = self._collect_message_ids(message_batch)
                     if user_message_ids:
                         self._session_manager.mark_messages_processed(app_name, input.thread_id, user_message_ids)
 
-                # Use ONLY the user message as new_message
+                # ユーザーメッセージのみを new_message として使用
                 new_message = user_message
 
             elif active_tool_results:
-                # Tool results WITHOUT user message - send FunctionResponse alone
+                # ユーザーメッセージなしのツール結果 - FunctionResponse のみを送信
                 function_response_parts = []
                 for tool_msg in active_tool_results:
                     tool_call_id = tool_msg['message'].tool_call_id
@@ -1184,10 +1182,10 @@ class ADKAgent:
 
                 new_message = types.Content(parts=function_response_parts, role='user')
             else:
-                # No tool results, just use the user message
+                # ツール結果なし、ユーザーメッセージのみを使用
                 new_message = user_message
 
-            # Create event translator
+            # イベントトランスレーターを作成
             event_translator = EventTranslator()
 
             try:
@@ -1198,10 +1196,10 @@ class ADKAgent:
                     initial_state=input.state
                 )
 
-                # Check session events (ADK stores conversation in events)
+                # セッションイベントをチェック（ADK は会話をイベントに保存）
                 events = getattr(session, 'events', [])
 
-                # If sending FunctionResponse, look for the original FunctionCall in session
+                # FunctionResponse を送信する場合、セッション内の元の FunctionCall を探す
                 if active_tool_results:
                     tool_call_id = active_tool_results[0]['message'].tool_call_id
                     found_call = False
@@ -1220,7 +1218,7 @@ class ADKAgent:
             except Exception as e:
                 pass
 
-            # Run ADK agent
+            # ADK エージェントを実行
             is_long_running_tool = False
             run_kwargs = {
                 "user_id": user_id,
@@ -1234,14 +1232,14 @@ class ADKAgent:
                 final_response = adk_event.is_final_response()
                 has_content = adk_event.content and hasattr(adk_event.content, 'parts') and adk_event.content.parts
 
-                # Check if this is a streaming chunk that needs regular processing
+                # これが通常処理が必要なストリーミングチャンクかチェック
                 is_streaming_chunk = (
-                    getattr(adk_event, 'partial', False) or  # Explicitly marked as partial
-                    (not getattr(adk_event, 'turn_complete', True)) or  # Live streaming not complete
-                    (not final_response)  # Not marked as final by is_final_response()
+                    getattr(adk_event, 'partial', False) or  # 明示的に partial としてマーク
+                    (not getattr(adk_event, 'turn_complete', True)) or  # ライブストリーミング未完了
+                    (not final_response)  # is_final_response() で final としてマークされていない
                 )
 
-                # Prefer LRO routing when a long-running tool call is present
+                # 長時間実行ツールコールがある場合は LRO ルーティングを優先
                 has_lro_function_call = False
                 try:
                     lro_ids = set(getattr(adk_event, 'long_running_tool_ids', []) or [])
@@ -1253,13 +1251,13 @@ class ADKAgent:
                                 has_lro_function_call = True
                                 break
                 except Exception:
-                    # Be conservative: if detection fails, do not block streaming path
+                    # 保守的に: 検出に失敗した場合、ストリーミングパスをブロックしない
                     has_lro_function_call = False
 
-                # Process as streaming if it's a chunk OR if it has content but no finish_reason,
-                # but only when there is no LRO function call present (LRO takes precedence)
+                # チャンクの場合、またはコンテンツがあるが finish_reason がない場合はストリーミングとして処理
+                # ただし LRO 関数呼び出しがない場合のみ（LRO が優先）
                 if (not has_lro_function_call) and (is_streaming_chunk or (has_content and not getattr(adk_event, 'finish_reason', None))):
-                    # Regular translation path
+                    # 通常の変換パス
                     async for ag_ui_event in event_translator.translate(
                         adk_event,
                         input.thread_id,
@@ -1270,8 +1268,8 @@ class ADKAgent:
                         await event_queue.put(ag_ui_event)
                         logger.debug(f"Event queued: {type(ag_ui_event).__name__} (thread {input.thread_id}, queue size after: {event_queue.qsize()})")
                 else:
-                    # LongRunning Tool events are usually emitted in final response
-                    # Ensure any active streaming text message is closed BEFORE tool calls
+                    # 長時間実行ツールイベントは通常 final response で発行
+                    # ツールコールの前にアクティブなストリーミングテキストメッセージを閉じることを確認
                     async for end_event in event_translator.force_close_streaming_message():
                         await event_queue.put(end_event)
                         logger.debug(f"Event queued (forced close): {type(end_event).__name__} (thread {input.thread_id}, queue size after: {event_queue.qsize()})")
@@ -1283,25 +1281,26 @@ class ADKAgent:
                         if ag_ui_event.type == EventType.TOOL_CALL_END:
                             is_long_running_tool = True
                         logger.debug(f"Event queued: {type(ag_ui_event).__name__} (thread {input.thread_id}, queue size after: {event_queue.qsize()})")
-                    # hard stop the execution if we find any long running tool
+                    # 長時間実行ツールが見つかった場合は実行を強制停止
                     if is_long_running_tool:
                         return
-            # Force close any streaming messages
+            # ストリーミングメッセージを強制的に閉じる
             async for ag_ui_event in event_translator.force_close_streaming_message():
                 await event_queue.put(ag_ui_event)
-            # moving states snapshot events after the text event clousure to avoid this error https://github.com/Contextable/ag-ui/issues/28
+            # このエラーを避けるためテキストイベントのクローズ後に状態スナップショットイベントを移動
+            # https://github.com/Contextable/ag-ui/issues/28
             final_state = await self._session_manager.get_session_state(input.thread_id,app_name,user_id)
             if final_state:
                 ag_ui_event =  event_translator._create_state_snapshot_event(final_state)                    
                 await event_queue.put(ag_ui_event)
-            # Signal completion - ADK execution is done
+            # 完了シグナル - ADK 実行完了
             logger.debug(f"Background task sending completion signal for thread {input.thread_id}")
             await event_queue.put(None)
             logger.debug(f"Background task completion signal sent for thread {input.thread_id}")
             
         except Exception as e:
             logger.error(f"Background execution error: {e}", exc_info=True)
-            # Put error in queue
+            # エラーをキューに入れる
             await event_queue.put(
                 RunErrorEvent(
                     type=EventType.RUN_ERROR,
@@ -1311,8 +1310,8 @@ class ADKAgent:
             )
             await event_queue.put(None)
         finally:
-            # Background task cleanup completed
-            # Ensure the ADK runner releases any resources (e.g. toolsets)
+            # バックグラウンドタスクのクリーンアップ完了
+            # ADK ランナーがリソース（ツールセットなど）を解放することを確認
             if runner is not None:
                 close_method = getattr(runner, "close", None)
                 if close_method is not None:
@@ -1328,7 +1327,7 @@ class ADKAgent:
                         )
     
     async def _cleanup_stale_executions(self):
-        """Clean up stale executions."""
+        """古い実行をクリーンアップ"""
         stale_threads = []
         
         for thread_id, execution in self._active_executions.items():
@@ -1341,15 +1340,15 @@ class ADKAgent:
             logger.info(f"Cleaned up stale execution for thread {thread_id}")
 
     async def close(self):
-        """Clean up resources including active executions."""
-        # Cancel all active executions
+        """アクティブな実行を含むリソースをクリーンアップ"""
+        # すべてのアクティブな実行をキャンセル
         async with self._execution_lock:
             for execution in self._active_executions.values():
                 await execution.cancel()
             self._active_executions.clear()
 
-        # Clear session lookup cache
+        # セッションルックアップキャッシュをクリア
         self._session_lookup_cache.clear()
 
-        # Stop session manager cleanup task
+        # セッションマネージャーのクリーンアップタスクを停止
         await self._session_manager.stop_cleanup_task()

@@ -1,6 +1,4 @@
-# src/session_manager.py
-
-"""Session manager that adds production features to ADK's native session service."""
+# ADK のネイティブセッションサービスに本番機能を追加するセッションマネージャー
 
 from typing import Dict, Optional, Set, Any, Union, Iterable
 import asyncio
@@ -11,22 +9,22 @@ logger = logging.getLogger(__name__)
 
 
 class SessionManager:
-    """Session manager that wraps ADK's session service.
+    """ADK のセッションサービスをラップするセッションマネージャー
     
-    Adds essential production features:
-    - Timeout monitoring based on ADK's lastUpdateTime
-    - Cross-user/app session enumeration
-    - Per-user session limits
-    - Automatic cleanup of expired sessions
-    - Optional automatic session memory on deletion
-    - State management and updates
+    本番環境に必要な機能を追加:
+    - ADK の lastUpdateTime に基づくタイムアウト監視
+    - ユーザー/アプリ横断のセッション列挙
+    - ユーザーごとのセッション制限
+    - 期限切れセッションの自動クリーンアップ
+    - 削除時のオプション自動セッションメモリ
+    - 状態管理と更新
     """
     
     _instance = None
     _initialized = False
     
     def __new__(cls, session_service=None, **kwargs):
-        """Ensure singleton instance."""
+        """シングルトンインスタンスを保証"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -35,20 +33,20 @@ class SessionManager:
         self,
         session_service=None,
         memory_service=None,
-        session_timeout_seconds: int = 1200,  # 20 minutes default
-        cleanup_interval_seconds: int = 300,  # 5 minutes
+        session_timeout_seconds: int = 1200,  # 20分デフォルト
+        cleanup_interval_seconds: int = 300,  # 5分
         max_sessions_per_user: Optional[int] = None,
         auto_cleanup: bool = True
     ):
-        """Initialize the session manager.
+        """セッションマネージャーを初期化
         
         Args:
-            session_service: ADK session service (required on first initialization)
-            memory_service: Optional ADK memory service for automatic session memory
-            session_timeout_seconds: Time before a session is considered expired
-            cleanup_interval_seconds: Interval between cleanup cycles
-            max_sessions_per_user: Maximum concurrent sessions per user (None = unlimited)
-            auto_cleanup: Enable automatic session cleanup task
+            session_service: ADK セッションサービス（初回初期化時は必須）
+            memory_service: 自動セッションメモリ用のオプション ADK メモリサービス
+            session_timeout_seconds: セッションが期限切れとみなされるまでの時間
+            cleanup_interval_seconds: クリーンアップサイクルの間隔
+            max_sessions_per_user: ユーザーごとの最大同時セッション数（None = 無制限）
+            auto_cleanup: 自動セッションクリーンアップタスクを有効化
         """
         if self._initialized:
             return
@@ -64,9 +62,9 @@ class SessionManager:
         self._max_per_user = max_sessions_per_user
         self._auto_cleanup = auto_cleanup
         
-        # Minimal tracking: just keys and user counts
-        self._session_keys: Set[str] = set()  # "app_name:session_id" keys
-        self._user_sessions: Dict[str, Set[str]] = {}  # user_id -> set of session_keys
+        # 最小限の追跡: キーとユーザーカウントのみ
+        self._session_keys: Set[str] = set()  # "app_name:session_id" キー
+        self._user_sessions: Dict[str, Set[str]] = {}  # user_id -> session_keys のセット
         self._processed_message_ids: Dict[str, Set[str]] = {}
         
         self._cleanup_task: Optional[asyncio.Task] = None
@@ -82,12 +80,12 @@ class SessionManager:
     
     @classmethod
     def get_instance(cls, **kwargs):
-        """Get the singleton instance."""
+        """シングルトンインスタンスを取得"""
         return cls(**kwargs)
     
     @classmethod
     def reset_instance(cls):
-        """Reset singleton for testing."""
+        """テスト用にシングルトンをリセット"""
         if cls._instance and hasattr(cls._instance, '_cleanup_task'):
             task = cls._instance._cleanup_task
             if task:
@@ -105,20 +103,20 @@ class SessionManager:
         user_id: str,
         initial_state: Optional[Dict[str, Any]] = None
     ) -> Any:
-        """Get existing session or create new one.
+        """既存のセッションを取得するか、新規作成
         
-        Returns the ADK session object directly.
+        ADK セッションオブジェクトを直接返す。
         """
         session_key = self._make_session_key(app_name, session_id)
         
-        # Check user limits before creating
+        # 作成前にユーザー制限をチェック
         if session_key not in self._session_keys and self._max_per_user:
             user_count = len(self._user_sessions.get(user_id, set()))
             if user_count >= self._max_per_user:
-                # Remove oldest session for this user
+                # このユーザーの最も古いセッションを削除
                 await self._remove_oldest_user_session(user_id)
         
-        # Get or create via ADK
+        # ADK 経由で取得または作成
         session = await self._session_service.get_session(
             session_id=session_id,
             app_name=app_name,
@@ -136,16 +134,16 @@ class SessionManager:
         else:
             logger.debug(f"Retrieved existing session: {session_key}")
         
-        # Track the session key
+        # セッションキーを追跡
         self._track_session(session_key, user_id)
         
-        # Start cleanup if needed
+        # 必要に応じてクリーンアップを開始
         if self._auto_cleanup and not self._cleanup_task:
             self._start_cleanup_task()
         
         return session
     
-    # ===== STATE MANAGEMENT METHODS =====
+    # ===== 状態管理メソッド =====
     
     async def update_session_state(
         self,
@@ -155,17 +153,17 @@ class SessionManager:
         state_updates: Dict[str, Any],
         merge: bool = True
     ) -> bool:
-        """Update session state with new values.
+        """セッション状態を新しい値で更新
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
-            state_updates: Dictionary of state key-value pairs to update
-            merge: If True, merge with existing state; if False, replace completely
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
+            state_updates: 更新する状態キー・値ペアの辞書
+            merge: True の場合は既存状態とマージ、False の場合は完全に置換
             
         Returns:
-            True if successful, False otherwise
+            成功時 True、失敗時 False
         """
         try:
             session = await self._session_service.get_session(
@@ -182,20 +180,20 @@ class SessionManager:
                 logger.debug(f"No state updates provided for session: {app_name}:{session_id}")
                 return False
             
-            # Apply state updates using EventActions
+            # EventActions を使用して状態更新を適用
             from google.adk.events import Event, EventActions
             
-            # Prepare state delta
+            # 状態デルタを準備
             if merge:
-                # Merge with existing state
+                # 既存状態とマージ
                 state_delta = state_updates
             else:
-                # Replace entire state
+                # 状態全体を置換
                 state_delta = state_updates
-                # Note: Complete replacement might need clearing existing keys
-                # This depends on ADK's behavior - may need to explicitly clear
+                # 注: 完全な置換には既存キーのクリアが必要な場合あり
+                # ADK の動作に依存 - 明示的にクリアが必要な場合あり
             
-            # Create event with state changes
+            # 状態変更を含むイベントを作成
             actions = EventActions(state_delta=state_delta)
             event = Event(
                 invocation_id=f"state_update_{int(time.time())}",
@@ -204,7 +202,7 @@ class SessionManager:
                 timestamp=time.time()
             )
             
-            # Apply changes through ADK's event system
+            # ADK のイベントシステムを通じて変更を適用
             await self._session_service.append_event(session, event)
             
             logger.info(f"Updated state for session {app_name}:{session_id}")
@@ -222,15 +220,15 @@ class SessionManager:
         app_name: str,
         user_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Get current session state.
+        """現在のセッション状態を取得
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
             
         Returns:
-            Session state dictionary or None if session not found
+            セッション状態辞書、セッションが見つからない場合は None
         """
         try:
             session = await self._session_service.get_session(
@@ -243,11 +241,11 @@ class SessionManager:
                 logger.debug(f"Session not found when getting state: {app_name}:{session_id}")
                 return None
             
-            # Return state as dictionary
+            # 状態を辞書として返す
             if hasattr(session.state, 'to_dict'):
                 return session.state.to_dict()
             else:
-                # Fallback for dict-like state objects
+                # 辞書風状態オブジェクトのフォールバック
                 return dict(session.state)
                 
         except Exception as e:
@@ -262,17 +260,17 @@ class SessionManager:
         key: str,
         default: Any = None
     ) -> Any:
-        """Get a specific value from session state.
+        """セッション状態から特定の値を取得
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
-            key: State key to retrieve
-            default: Default value if key not found
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
+            key: 取得する状態キー
+            default: キーが見つからない場合のデフォルト値
             
         Returns:
-            Value for the key or default
+            キーの値またはデフォルト
         """
         try:
             session = await self._session_service.get_session(
@@ -302,17 +300,17 @@ class SessionManager:
         key: str,
         value: Any
     ) -> bool:
-        """Set a specific value in session state.
+        """セッション状態に特定の値を設定
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
-            key: State key to set
-            value: Value to set
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
+            key: 設定する状態キー
+            value: 設定する値
             
         Returns:
-            True if successful, False otherwise
+            成功時 True、失敗時 False
         """
         return await self.update_session_state(
             session_id=session_id,
@@ -328,27 +326,27 @@ class SessionManager:
         user_id: str,
         keys: Union[str, list]
     ) -> bool:
-        """Remove specific keys from session state.
+        """セッション状態から特定のキーを削除
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
-            keys: Single key or list of keys to remove
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
+            keys: 削除する単一キーまたはキーのリスト
             
         Returns:
-            True if successful, False otherwise
+            成功時 True、失敗時 False
         """
         try:
             if isinstance(keys, str):
                 keys = [keys]
             
-            # Get current state
+            # 現在の状態を取得
             current_state = await self.get_session_state(session_id, app_name, user_id)
             if not current_state:
                 return False
             
-            # Create state delta to remove keys (set to None for removal)
+            # キー削除用の状態デルタを作成（削除のため None を設定）
             state_delta = {key: None for key in keys if key in current_state}
             
             if not state_delta:
@@ -373,16 +371,16 @@ class SessionManager:
         user_id: str,
         preserve_prefixes: Optional[list] = None
     ) -> bool:
-        """Clear session state, optionally preserving certain prefixes.
+        """セッション状態をクリア、オプションで特定のプレフィックスを保持
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
-            preserve_prefixes: List of prefixes to preserve (e.g., ['user:', 'app:'])
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
+            preserve_prefixes: 保持するプレフィックスのリスト（例: ['user:', 'app:']）
             
         Returns:
-            True if successful, False otherwise
+            成功時 True、失敗時 False
         """
         try:
             current_state = await self.get_session_state(session_id, app_name, user_id)
@@ -391,7 +389,7 @@ class SessionManager:
             
             preserve_prefixes = preserve_prefixes or []
             
-            # Determine which keys to remove
+            # 削除するキーを決定
             keys_to_remove = []
             for key in current_state.keys():
                 should_preserve = any(key.startswith(prefix) for prefix in preserve_prefixes)
@@ -420,24 +418,24 @@ class SessionManager:
         initial_state: Dict[str, Any],
         overwrite_existing: bool = False
     ) -> bool:
-        """Initialize session state with default values.
+        """セッション状態をデフォルト値で初期化
         
         Args:
-            session_id: Session identifier
-            app_name: Application name
-            user_id: User identifier
-            initial_state: Initial state values
-            overwrite_existing: Whether to overwrite existing values
+            session_id: セッション識別子
+            app_name: アプリケーション名
+            user_id: ユーザー識別子
+            initial_state: 初期状態値
+            overwrite_existing: 既存の値を上書きするかどうか
             
         Returns:
-            True if successful, False otherwise
+            成功時 True、失敗時 False
         """
         try:
             if not overwrite_existing:
-                # Only set values that don't already exist
+                # 既に存在しない値のみ設定
                 current_state = await self.get_session_state(session_id, app_name, user_id)
                 if current_state:
-                    # Filter out keys that already exist
+                    # 既に存在するキーをフィルタリング
                     filtered_state = {
                         key: value for key, value in initial_state.items()
                         if key not in current_state
@@ -458,7 +456,7 @@ class SessionManager:
             logger.error(f"Failed to initialize session state: {e}", exc_info=True)
             return False
     
-    # ===== BULK STATE OPERATIONS =====
+    # ===== 一括状態操作 =====
     
     async def bulk_update_user_state(
         self,
@@ -466,15 +464,15 @@ class SessionManager:
         state_updates: Dict[str, Any],
         app_name_filter: Optional[str] = None
     ) -> Dict[str, bool]:
-        """Update state across all sessions for a user.
+        """ユーザーのすべてのセッション全体の状態を更新
         
         Args:
-            user_id: User identifier
-            state_updates: State updates to apply
-            app_name_filter: Optional filter for specific app
+            user_id: ユーザー識別子
+            state_updates: 適用する状態更新
+            app_name_filter: 特定アプリ用のオプションフィルタ
             
         Returns:
-            Dictionary mapping session_key to success status
+            session_key から成功ステータスへのマッピング辞書
         """
         results = {}
         
@@ -485,7 +483,7 @@ class SessionManager:
         for session_key in self._user_sessions[user_id]:
             app_name, session_id = session_key.split(':', 1)
             
-            # Apply filter if specified
+            # 指定されていればフィルタを適用
             if app_name_filter and app_name != app_name_filter:
                 continue
             
@@ -500,10 +498,10 @@ class SessionManager:
         
         return results
     
-    # ===== EXISTING METHODS (unchanged) =====
+    # ===== 既存メソッド =====
     
     def _track_session(self, session_key: str, user_id: str):
-        """Track a session key for enumeration."""
+        """列挙用にセッションキーを追跡"""
         self._session_keys.add(session_key)
 
         if user_id not in self._user_sessions:
@@ -511,7 +509,7 @@ class SessionManager:
         self._user_sessions[user_id].add(session_key)
 
     def _untrack_session(self, session_key: str, user_id: str):
-        """Remove session tracking."""
+        """セッション追跡を削除"""
         self._session_keys.discard(session_key)
         self._processed_message_ids.pop(session_key, None)
 
@@ -541,14 +539,14 @@ class SessionManager:
                 processed_ids.add(message_id)
     
     async def _remove_oldest_user_session(self, user_id: str):
-        """Remove the oldest session for a user based on lastUpdateTime."""
+        """lastUpdateTime に基づいてユーザーの最も古いセッションを削除"""
         if user_id not in self._user_sessions:
             return
         
         oldest_session = None
         oldest_time = float('inf')
         
-        # Find oldest session by checking ADK's lastUpdateTime
+        # ADK の lastUpdateTime をチェックして最も古いセッションを検索
         for session_key in self._user_sessions[user_id]:
             app_name, session_id = session_key.split(':', 1)
             try:
@@ -571,10 +569,10 @@ class SessionManager:
             logger.info(f"Removed oldest session for user {user_id}: {session_key}")
     
     async def _delete_session(self, session):
-        """Delete a session using the session object directly.
+        """セッションオブジェクトを直接使用してセッションを削除
         
         Args:
-            session: The ADK session object to delete
+            session: 削除する ADK セッションオブジェクト
         """
         if not session:
             logger.warning("Cannot delete None session")
@@ -582,7 +580,7 @@ class SessionManager:
             
         session_key = f"{session.app_name}:{session.id}"
         
-        # If memory service is available, add session to memory before deletion
+        # メモリサービスが利用可能な場合、削除前にセッションをメモリに追加
         logger.debug(f"Deleting session {session_key}, memory_service: {self._memory_service is not None}")
         if self._memory_service:
             try:
@@ -604,7 +602,7 @@ class SessionManager:
         self._untrack_session(session_key, session.user_id)
     
     def _start_cleanup_task(self):
-        """Start the cleanup task if not already running."""
+        """まだ実行されていなければクリーンアップタスクを開始"""
         try:
             loop = asyncio.get_running_loop()
             self._cleanup_task = loop.create_task(self._cleanup_loop())
@@ -613,7 +611,7 @@ class SessionManager:
             logger.debug("No event loop, cleanup will start later")
     
     async def _cleanup_loop(self):
-        """Periodically clean up expired sessions."""
+        """期限切れセッションを定期的にクリーンアップ"""
         logger.debug(f"Cleanup loop started for SessionManager {id(self)}")
         while True:
             try:
@@ -627,15 +625,15 @@ class SessionManager:
                 logger.error(f"Cleanup error: {e}", exc_info=True)
     
     async def _cleanup_expired_sessions(self):
-        """Find and remove expired sessions based on lastUpdateTime."""
+        """lastUpdateTime に基づいて期限切れセッションを検索して削除"""
         current_time = time.time()
         expired_count = 0
         
-        # Check all tracked sessions
-        for session_key in list(self._session_keys):  # Copy to avoid modification during iteration
+        # すべての追跡セッションをチェック
+        for session_key in list(self._session_keys):  # 反復中の変更を避けるためコピー
             app_name, session_id = session_key.split(':', 1)
             
-            # Find user_id for this session
+            # このセッションの user_id を検索
             user_id = None
             for uid, keys in self._user_sessions.items():
                 if session_key in keys:
@@ -655,7 +653,7 @@ class SessionManager:
                 if session and hasattr(session, 'last_update_time'):
                     age = current_time - session.last_update_time
                     if age > self._timeout:
-                        # Check for pending tool calls before deletion (HITL scenarios)
+                        # 削除前に保留ツールコールをチェック（HITL シナリオ）
                         pending_calls = session.state.get("pending_tool_calls", []) if session.state else []
                         has_pending = len(pending_calls) > 0
                         if has_pending:
@@ -664,7 +662,7 @@ class SessionManager:
                             await self._delete_session(session)
                             expired_count += 1
                 elif not session:
-                    # Session doesn't exist, just untrack it
+                    # セッションが存在しない、追跡のみ解除
                     self._untrack_session(session_key, user_id)
                     
             except Exception as e:
@@ -674,15 +672,15 @@ class SessionManager:
             logger.info(f"Cleaned up {expired_count} expired sessions")
     
     def get_session_count(self) -> int:
-        """Get total number of tracked sessions."""
+        """追跡セッションの総数を取得"""
         return len(self._session_keys)
     
     def get_user_session_count(self, user_id: str) -> int:
-        """Get number of sessions for a user."""
+        """ユーザーのセッション数を取得"""
         return len(self._user_sessions.get(user_id, set()))
     
     async def stop_cleanup_task(self):
-        """Stop the cleanup task."""
+        """クリーンアップタスクを停止"""
         if self._cleanup_task:
             self._cleanup_task.cancel()
             try:

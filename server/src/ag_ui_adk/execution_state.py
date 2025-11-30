@@ -1,6 +1,4 @@
-# src/ag_ui_adk/execution_state.py
-
-"""Execution state management for background ADK runs with tool support."""
+# ツールサポート付きバックグラウンド ADK 実行の状態管理
 
 import asyncio
 import time
@@ -11,12 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionState:
-    """Manages the state of a background ADK execution.
+    """バックグラウンド ADK 実行の状態を管理
 
-    This class tracks:
-    - The background asyncio task running the ADK agent
-    - Event queue for streaming results to the client
-    - Execution timing and completion state
+    このクラスは以下を追跡:
+    - ADK エージェントを実行するバックグラウンド asyncio タスク
+    - クライアントへストリーミングするイベントキュー
+    - 実行時間と完了状態
     """
 
     def __init__(
@@ -25,12 +23,12 @@ class ExecutionState:
         thread_id: str,
         event_queue: asyncio.Queue
     ):
-        """Initialize execution state.
+        """実行状態を初期化
 
         Args:
-            task: The asyncio task running the ADK agent
-            thread_id: The thread ID for this execution
-            event_queue: Queue containing events to stream to client
+            task: ADK エージェントを実行する asyncio タスク
+            thread_id: この実行のスレッド ID
+            event_queue: クライアントにストリーミングするイベントを含むキュー
         """
         self.task = task
         self.thread_id = thread_id
@@ -42,18 +40,18 @@ class ExecutionState:
         logger.debug(f"Created execution state for thread {thread_id}")
 
     def is_stale(self, timeout_seconds: int) -> bool:
-        """Check if this execution has been running too long.
+        """実行が長すぎるかどうかをチェック
 
         Args:
-            timeout_seconds: Maximum execution time in seconds
+            timeout_seconds: 最大実行時間（秒）
 
         Returns:
-            True if execution has exceeded timeout
+            タイムアウトを超えた場合 True
         """
         return time.time() - self.start_time > timeout_seconds
 
     async def cancel(self):
-        """Cancel the execution and clean up resources."""
+        """実行をキャンセルしてリソースをクリーンアップ"""
         logger.info(f"Cancelling execution for thread {self.thread_id}")
 
         # Cancel the background task
@@ -67,44 +65,44 @@ class ExecutionState:
         self.is_complete = True
 
     def get_execution_time(self) -> float:
-        """Get the total execution time in seconds.
+        """合計実行時間を秒で取得
 
         Returns:
-            Time in seconds since execution started
+            実行開始からの経過秒数
         """
         return time.time() - self.start_time
 
     def add_pending_tool_call(self, tool_call_id: str):
-        """Add a tool call ID to the pending set.
+        """ツールコール ID を保留セットに追加
 
         Args:
-            tool_call_id: The tool call ID to track
+            tool_call_id: 追跡するツールコール ID
         """
         self.pending_tool_calls.add(tool_call_id)
         logger.debug(f"Added pending tool call {tool_call_id} to thread {self.thread_id}")
 
     def remove_pending_tool_call(self, tool_call_id: str):
-        """Remove a tool call ID from the pending set.
+        """ツールコール ID を保留セットから削除
 
         Args:
-            tool_call_id: The tool call ID to remove
+            tool_call_id: 削除するツールコール ID
         """
         self.pending_tool_calls.discard(tool_call_id)
         logger.debug(f"Removed pending tool call {tool_call_id} from thread {self.thread_id}")
 
     def has_pending_tool_calls(self) -> bool:
-        """Check if there are outstanding tool calls waiting for responses.
+        """応答待ちのツールコールがあるかチェック
 
         Returns:
-            True if there are pending tool calls (HITL scenario)
+            保留中のツールコールがある場合 True（HITL シナリオ）
         """
         return len(self.pending_tool_calls) > 0
 
     def get_status(self) -> str:
-        """Get a human-readable status of the execution.
+        """実行の人間可読なステータスを取得
 
         Returns:
-            Status string describing the current state
+            現在の状態を表す文字列
         """
         if self.is_complete:
             if self.has_pending_tool_calls():
@@ -117,7 +115,7 @@ class ExecutionState:
             return "running"
 
     def __repr__(self) -> str:
-        """String representation of the execution state."""
+        """実行状態の文字列表現"""
         return (
             f"ExecutionState(thread_id='{self.thread_id}', "
             f"status='{self.get_status()}', "
