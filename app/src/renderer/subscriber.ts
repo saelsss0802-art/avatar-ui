@@ -4,6 +4,7 @@ import { TerminalEngine } from "./engine/TerminalEngine";
 import { config } from "./config";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import type { AutoScrollController } from "./autoScroll";
 
 /**
  * Markdown → サニタイズ済み HTML へ変換（共通関数）
@@ -19,23 +20,19 @@ export function renderMarkdown(md: string): string {
 interface UiSubscriberOptions {
   outputEl: HTMLElement;  // テキスト出力先
   engine: TerminalEngine; // タイプライターエンジン
+  autoScroll: AutoScrollController; // 下端追従コントロール
 }
 
 /**
  * エージェントイベントを購読し、UI を更新するサブスクライバーを生成
  */
 export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscriber {
-  const { outputEl, engine } = options;
+  const { outputEl, engine, autoScroll } = options;
 
   // ツール呼び出し表示用の状態
   let activeToolDetails: HTMLDetailsElement | null = null;
   let activeToolName = "";
   let argsBuffer = "";
-
-  // 出力エリアを最下部にスクロール
-  const scrollToBottom = () => {
-    outputEl.scrollTop = outputEl.scrollHeight;
-  };
 
   // テキスト行を追加
   const appendLine = (className: string, text: string) => {
@@ -43,7 +40,7 @@ export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscribe
     line.className = `text-line ${className}`;
     line.textContent = text;
     outputEl.appendChild(line);
-    scrollToBottom();
+    autoScroll.maybeScroll();
     return line;
   };
 
@@ -88,7 +85,7 @@ export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscribe
       details.appendChild(summary);
 
       outputEl.appendChild(details);
-      scrollToBottom();
+      autoScroll.maybeScroll();
 
       activeToolDetails = details;
     },
@@ -142,7 +139,7 @@ export function createUiSubscriber(options: UiSubscriberOptions): AgentSubscribe
         resultDiv.appendChild(body);
 
         activeToolDetails.appendChild(resultDiv);
-        scrollToBottom();
+        autoScroll.maybeScroll();
       }
 
       activeToolDetails = null;

@@ -4,6 +4,7 @@ import { createAgent } from "../core/agent";
 import { loggerSubscriber } from "../core/loggerSubscriber";
 import { createUiSubscriber, renderMarkdown } from "./subscriber";
 import { TerminalEngine } from "./engine/TerminalEngine";
+import { createAutoScrollController } from "./autoScroll";
 import pkg from "../../package.json"; // バージョン情報の取得
 
 // エージェントのインスタンスを保持する
@@ -120,7 +121,8 @@ async function initApp() {
 
   // 3. UIエンジン (Game Loop) の初期化
   // これひとつでタイプライター・アニメーション・音声すべてを制御する
-  const engine = new TerminalEngine(outputEl, avatarImg, renderMarkdown);
+  const autoScroll = createAutoScrollController(outputEl);
+  const engine = new TerminalEngine(outputEl, avatarImg, renderMarkdown, autoScroll);
 
   // 4. エージェント初期化（サーバ設定に従う）
   agentInstance = createAgent({
@@ -179,6 +181,7 @@ async function initApp() {
         createUiSubscriber({
           outputEl,
           engine, // エンジンを渡す
+          autoScroll,
         }),
       );
     } catch (error) {

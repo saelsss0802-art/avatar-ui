@@ -1,5 +1,6 @@
 // タイピング表示・リップシンク・ビープ音をまとめて制御するレンダリングエンジン
 import { config } from "../config";
+import type { AutoScrollController } from "../autoScroll";
 
 export type MarkdownRenderer = (md: string) => string;
 
@@ -7,6 +8,7 @@ export class TerminalEngine {
   private outputEl: HTMLElement;
   private avatarImg: HTMLImageElement;
   private renderMarkdown: MarkdownRenderer;
+  private autoScroll: AutoScrollController;
   
   // 状態
   private queue: string[] = [];
@@ -35,11 +37,13 @@ export class TerminalEngine {
   constructor(
     outputEl: HTMLElement,
     avatarImg: HTMLImageElement,
-    renderMarkdown: MarkdownRenderer
+    renderMarkdown: MarkdownRenderer,
+    autoScroll: AutoScrollController
   ) {
     this.outputEl = outputEl;
     this.avatarImg = avatarImg;
     this.renderMarkdown = renderMarkdown;
+    this.autoScroll = autoScroll;
     
     // アバター画像のパスを保存
     this.idleSrc = avatarImg.dataset.idle ?? avatarImg.src;
@@ -59,7 +63,7 @@ export class TerminalEngine {
     line.innerHTML = this.renderMarkdown(initialText);
     this.outputEl.appendChild(line);
     this.currentTarget = line;
-    this.outputEl.scrollTop = this.outputEl.scrollHeight;
+    this.autoScroll.maybeScroll();
   }
 
   /**
@@ -107,7 +111,7 @@ export class TerminalEngine {
           // バッファに追加して Markdown 変換
           this.displayedText += char;
           this.currentTarget.innerHTML = this.renderMarkdown(this.displayedText);
-          this.outputEl.scrollTop = this.outputEl.scrollHeight;
+          this.autoScroll.maybeScroll();
           
           this.playBeep(); // 音を鳴らす
           this.isTyping = true;
