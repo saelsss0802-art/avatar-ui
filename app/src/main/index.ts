@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from 'electron'
+import { app, BrowserWindow, globalShortcut, nativeImage } from 'electron'
 import { join } from 'path'
 import { config as loadEnv } from 'dotenv'
 
@@ -16,6 +16,7 @@ if (isDev) {
 const APP_ENV = process.env.APP_ENV ?? 'prod'
 const OPEN_DEVTOOLS = process.env.OPEN_DEVTOOLS       // DevTools 強制開閉
 const ELECTRON_WARNINGS = process.env.ELECTRON_WARNINGS // 警告表示の強制指定
+const APP_ID = 'com.avatar-ui.app'
 
 // Electron の警告表示可否（デフォルト: dev=表示, prod=非表示）
 const warningsEnabled = (() => {
@@ -26,6 +27,12 @@ const warningsEnabled = (() => {
 
 if (!warningsEnabled) {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
+}
+
+// アイコンパスを解決（dev・prod両対応）
+const resolveIconPath = () => {
+  const base = app.isPackaged ? process.resourcesPath : app.getAppPath()
+  return join(base, 'build', 'icon.png')
 }
 
 // メインウィンドウを生成
@@ -39,6 +46,8 @@ function createWindow() {
     transparent: true, // ウィンドウ背景を透過させる
     backgroundColor: '#00000000', // 透過背景の色（完全透明）
     hasShadow: false,  // 透過ウィンドウの影を消す
+    title: 'Avatar UI', // フォールバック用タイトル
+    icon: resolveIconPath(), // Windows/Linux でのウィンドウアイコン
     webPreferences: {
       nodeIntegration: false,      // 安全設定: レンダラーから Node を触らせない
       contextIsolation: true,      // 安全設定: コンテキスト分離
@@ -62,6 +71,24 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Windows タスクバー / 通知用 AppUserModelId
+  app.setAppUserModelId(APP_ID)
+
+  // Linux/Win のアプリ名を上書き（macは Info.plist 優先）
+  app.setName('Avatar UI')
+  app.setAboutPanelOptions({
+    applicationName: 'Avatar UI',
+    version: app.getVersion(),
+  })
+
+  // macOS 開発時でも Dock アイコンを上書き
+  if (process.platform === 'darwin') {
+    const icon = nativeImage.createFromPath(resolveIconPath())
+    if (!icon.isEmpty()) {
+      app.dock.setIcon(icon)
+    }
+  }
+
   createWindow()
   // 共通ショートカット: Cmd/Ctrl+Q で終了
   globalShortcut.register('CommandOrControl+Q', () => app.quit())

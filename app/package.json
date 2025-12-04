@@ -1,5 +1,6 @@
 {
   "name": "avatar-ui",
+  "productName": "Avatar UI",
   "version": "0.1.0",
   "private": true,
   "main": "dist-electron/index.js",

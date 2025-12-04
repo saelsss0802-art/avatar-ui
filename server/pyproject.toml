@@ -2,7 +2,6 @@
 [project]
 name = "ag_ui_adk"
 version = "0.3.2"
-readme = "README.md"
 authors = [
     { name = "Mark Fogle", email = "mark@contextable.com" }
 ]
@@ -12,7 +11,7 @@ dependencies = [
     "aiohttp>=3.12.0",
     "asyncio>=3.4.3",
     "fastapi>=0.115.2",        # Web フレームワーク
-    "google-adk>=1.14.0",      # Google ADK
+    "google-adk>=1.18.0",      # Google ADK
     "google-genai>=1.39.0",    # Gemini API
     "litellm>=1.80.0",         # マルチ LLM ラッパー
     "pydantic>=2.11.7",        # 設定バリデーション

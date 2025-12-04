@@ -10,6 +10,7 @@ from google.adk.agents import LlmAgent
 from google.adk import tools as adk_tools
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools.google_search_tool import GoogleSearchTool
 
 from src import config
 
@@ -52,7 +53,7 @@ def build_agent() -> ADKAgent:
             model=config.SEARCH_SUBAGENT_MODEL,
             description="Performs web searches using Google Search",
             instruction="Search the web and return concise results.",
-            tools=[adk_tools.google_search],
+            tools=[GoogleSearchTool(bypass_multi_tools_limit=True)],
         )
         search_tool = AgentTool(agent=search_agent)
 
