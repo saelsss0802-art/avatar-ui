@@ -50,25 +50,19 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install .
 ```
 
-### 3. 開発を一発起動（サーバー＋クライアント同時）
+### 3. 開発をワンコマンドで起動（サーバー＋クライアント同時・1ターミナル）
 
 ```bash
 cd server
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-python -m uvicorn main:app --host ${SERVER_HOST:-127.0.0.1} --port ${SERVER_PORT:-8000} --reload
-```
-
-別ターミナルで:
-
-```bash
-cd app
+cd ../app
 npm install   # 初回のみ
-npm run dev
+npm run dev:all
 ```
 
-※ venv を有効化した状態であれば、`cd app && npm run dev:all` でもサーバー＋クライアントを同時に起動できます（mac/Linux/Windows 共通）。
+1ターミナルで両方走ります。終了は Ctrl+C で OK。
 
-### 4. 単体起動（従来手順）
+#### 代替: 2ターミナルで個別に起動したい場合
 - サーバーだけ: `cd server && source .venv/bin/activate && uvicorn main:app --reload`
 - クライアントだけ: `cd app && npm run dev`
 
