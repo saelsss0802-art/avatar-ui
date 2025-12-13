@@ -41,29 +41,34 @@ GOOGLE_API_KEY=ここにAPIキーを貼り付け
 
 > API キー取得先: [Gemini](https://aistudio.google.com/app/apikey) / [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys)
 
-### 2. サーバー起動（初回セットアップ）
+### 2. セットアップと起動（コピペOK）
 
+#### mac / Linux
 ```bash
-cd server
+cd /Users/u/Projects/avatar-ui/server
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install .
-```
-
-### 3. 開発をワンコマンドで起動（サーバー＋クライアント同時・1ターミナル）
-
-```bash
-cd server
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+pip install -e .
 cd ../app
-npm install   # 初回のみ
-npm run dev:all
+npm install        # 初回のみ
+npm run dev:all    # サーバー + クライアント同時起動
 ```
 
-1ターミナルで両方走ります。終了は Ctrl+C で OK。
+#### Windows (PowerShell)
+```powershell
+cd C:\Users\<あなた>\Projects\avatar-ui\server
+py -3 -m venv .venv
+.\.venv\Scripts\activate
+pip install -e .
+cd ..\app
+npm install        # 初回のみ
+npm run dev:all    # サーバー + クライアント同時起動
+```
 
-#### 代替: 2ターミナルで個別に起動したい場合
-- サーバーだけ: `cd server && source .venv/bin/activate && ./.venv/bin/python -m uvicorn main:app --reload`
+起動後、クライアントは空いているポート（例: http://localhost:5173/）がログに表示されます。終了は Ctrl+C。
+
+#### 個別起動したい場合
+- サーバーだけ: `cd server && python -m uvicorn main:app --reload`
 - クライアントだけ: `cd app && npm run dev`
 
 ## 設定
