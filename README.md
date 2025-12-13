@@ -1,81 +1,121 @@
 # Avatar UI
 
-人と AI が共存する次世代インターフェース基盤。  
-AG-UI プロトコル準拠 / マルチ LLM 対応 / デスクトップ & 拡張可能。
+<p align="center">
+  📖 <a href="./README.ja.md">日本語版はこちら</a>
+</p>
+
+A next-generation interface foundation where humans and AI coexist.  
+Supports Gemini, GPT, and Claude. An agent UI that runs on your desktop.
 
 ![demo](./docs/assets/avatar-ui_demo_02.gif)
 
-## 特徴
+## Features
 
-- **AG-UI 準拠** – 標準プロトコルでエージェントと UI を接続
-- **マルチ LLM** – Gemini / OpenAI / Anthropic を設定で切り替え
-- **拡張設計** – ツール追加・サブエージェント追加が容易
-- **デスクトップ動作** – Electron によるローカル実行
-- **フルカスタマイズ** – テーマ、アバター、プロンプトを自由に変更
+- **Multi-LLM support** – Switch Gemini / OpenAI / Anthropic via config
+- **Extensible tools** – Built-in search sub-agent. MCP integration and adding tools supported
+- **Personalized UI** – Three color themes. Swap avatars freely
+- **Desktop app** – Runs locally. Supports macOS / Windows / Linux
+- **Commercial use OK** – Open source (MIT). Free for personal and commercial use
 
-## 使い方
+## Usage
 
-1. アプリを起動すると、アバターが待機状態で表示されます
-2. 入力欄にメッセージを入力して Enter で送信
-3. アバターがリアルタイムで応答（タイピングアニメーション付き）
-4. Google 検索が必要な質問は自動で検索して回答
+1. Launch the app → the avatar appears in standby
+2. Type a message → press `Enter` to send
+3. The avatar responds in real time
+4. Automatically runs Google Search when needed
+5. Quit: `Ctrl+C`
 
-## クイックスタート
+## Quick Start
 
-**必要なもの**: Node.js 20+, Python 3.12+
+### Prerequisites
 
-### 1. 環境変数を設定
+- Node.js 20+
+- Python 3.12+
+- API key (at least one)
+  - [Gemini](https://aistudio.google.com/app/apikey)
+  - [OpenAI](https://platform.openai.com/api-keys)
+  - [Anthropic](https://console.anthropic.com/settings/keys)
+
+> ⚠️ Please follow the terms of service for external APIs (Gemini / OpenAI / Anthropic, etc.). API keys are not included in this repository.
+
+### 1. Get the repository
+
+Download the source code from GitHub (`git clone`).
+
+```bash
+git clone https://github.com/siqidev/avatar-ui.git
+cd avatar-ui
+```
+
+### 2. Set environment variables
+
+Store secrets such as API keys in the `.env` file.  
+First, copy the template:
 
 ```bash
 cp .env.example .env
 ```
 
-`.env` を開き、API キーを設定:
+Open `.env` and set the API key for the LLM you want to use:
 
 ```dotenv
-# ══════════════════════════════════════════════════
-# ↓ ここを編集: あなたの API キーに置き換え
-# ══════════════════════════════════════════════════
-GOOGLE_API_KEY=ここにAPIキーを貼り付け
+GOOGLE_API_KEY=your-api-key-here
+# If you use OpenAI / Anthropic, set the corresponding keys too
 ```
 
-> API キー取得先: [Gemini](https://aistudio.google.com/app/apikey) / [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys)
+### 3. Setup and run
 
-### 2. セットアップと起動（コピペOK）
+#### macOS / Linux
 
-#### mac / Linux
 ```bash
-cd /Users/u/Projects/avatar-ui/server
-python3 -m venv .venv
+# Move to the project root (replace with your path)
+# Example: if placed in the Documents folder
+cd ~/Documents/avatar-ui
+
+# Server setup (create a Python venv and install dependencies)
+cd server
+python3 -m venv .venv   # first time only
 source .venv/bin/activate
-pip install -e .
+pip install -e .        # first time only
+
+# Run (server + client together)
 cd ../app
-npm install        # 初回のみ
-npm run dev:all    # サーバー + クライアント同時起動
+npm install             # first time only
+npm run dev:all
 ```
 
 #### Windows (PowerShell)
+
 ```powershell
-cd C:\Users\<あなた>\Projects\avatar-ui\server
-py -3 -m venv .venv
-.\.venv\Scripts\activate
-pip install -e .
+# Move to the project root (replace with your path)
+# Example: if placed in the Documents folder
+cd "$HOME\Documents\avatar-ui"
+
+# Server setup (create a Python venv and install dependencies)
+cd server
+python -m venv .venv    # first time only
+.\.venv\Scripts\Activate.ps1
+pip install -e .        # first time only
+
+# Run (server + client together)
 cd ..\app
-npm install        # 初回のみ
-npm run dev:all    # サーバー + クライアント同時起動
+npm install             # first time only
+npm run dev:all
 ```
 
-起動後、クライアントは空いているポート（例: http://localhost:5173/）がログに表示されます。終了は Ctrl+C。
+When it starts, the Electron app opens automatically. During development, you can also open the URL shown in the terminal (e.g. `http://localhost:5173`) in your browser.
 
-#### 個別起動したい場合
-- サーバーだけ: `cd server && python -m uvicorn main:app --reload`
-- クライアントだけ: `cd app && npm run dev`
+## Configuration
 
-## 設定
+Copy the config file and edit it:
 
-### LLM の切り替え
+```bash
+cp settings.default.json5 settings.json5
+```
 
-`settings.json5` を編集（なければ `settings.default.json5` をコピー）:
+You can change the LLM, theme, and more in `settings.json5`.
+
+### Switch LLMs
 
 ```json5
 "server": {
@@ -84,11 +124,12 @@ npm run dev:all    # サーバー + クライアント同時起動
 }
 ```
 
-対応する API キーを `.env` に設定し、サーバーを再起動。
+Set the corresponding API key in `.env` and restart the server.
 
-### Google 検索機能
+### Search sub-agent
 
-Gemini 使用時のみ有効。無効化する場合:
+The Google Search sub-agent is enabled by default (runs with a Gemini model).  
+To disable it:
 
 ```json5
 "searchSubAgent": {
@@ -96,44 +137,25 @@ Gemini 使用時のみ有効。無効化する場合:
 }
 ```
 
-### カスタマイズ
+Because the search sub-agent uses the Gemini API, you must set `GOOGLE_API_KEY`.
 
-| 項目 | 場所 |
-|------|------|
-| システムプロンプト | `settings.json5` → `server.systemPrompt` |
-| テーマ・色 | `settings.json5` → `ui.theme`, `ui.themes` |
-| アバター画像 | `app/src/renderer/assets/` |
-| ツール追加 | `server/main.py` → `tools` リスト |
+### Customization
 
-## ビルド
+| Item | Where to configure |
+|------|----------|
+| System prompt | `settings.json5` → `server.systemPrompt` |
+| Theme / colors | `settings.json5` → `ui.theme`, `ui.themes` |
+| Avatar images | Place under `app/src/renderer/assets/` |
+| Add tools | `server/main.py` → `tools` list |
 
-配布用パッケージを作成:
+## Documentation
 
-```bash
-cd app
-npm run build     # レンダラービルド
-npm run package   # Electron パッケージ生成
-```
+- [Design doc](./docs/project.md) – Architecture, implementation details, roadmap
+- [AG-UI Protocol](https://docs.ag-ui.com/) – Protocol specification (official)
+- [Google ADK](https://google.github.io/adk-docs/) – Agent Development Kit (official)
 
-成果物: `app/dist/`
-
-## 参考情報
-
-### 公式ドキュメント
-
-- [AG-UI Protocol](https://docs.ag-ui.com/)
-- [Google ADK](https://google.github.io/adk-docs/)
-- [ADK Built-in Tools](https://google.github.io/adk-docs/tools/built-in-tools/)
-
-### 技術的な注意
-
-- **セッション**: メモリ上で保持。サーバー再起動で会話履歴は消失
-- **Google 検索**: Gemini 2.x/3.x 系モデルのみ対応（詳細は公式ドキュメント参照）
-
-## ライセンス
+## License
 
 [MIT License](LICENSE)
 
 © 2025 [SIQI](https://siqi.jp) (Sito Sikino)
-
-> ⚠️ 外部 API（Gemini / OpenAI / Anthropic 等）の利用は各サービスの利用規約に従ってください。API キーは本リポジトリに含まれていません。

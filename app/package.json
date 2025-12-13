@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "package": "electron-builder",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev:server": "cd ../server && python -m uvicorn main:app --reload",
     "dev:all": "concurrently -c \"cyan,magenta\" -n \"server,client\" \"npm run dev:server\" \"npm run dev\""
   },

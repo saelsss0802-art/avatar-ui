@@ -82,11 +82,16 @@ const defaults: AppConfig = {
 // シングルトン: アプリ全体で共有する設定オブジェクト
 export let config: AppConfig = { ...defaults };
 
+export interface FetchConfigOptions {
+  /** 設定取得に失敗しても console.error を出さない（リトライ待機用） */
+  silent?: boolean;
+}
+
 /**
  * サーバーから設定を取得し、config を更新する
  * @throws 取得失敗時は例外をスローし、呼び出し元でエラー表示を行う
  */
-export async function fetchConfig(): Promise<void> {
+export async function fetchConfig(options: FetchConfigOptions = {}): Promise<void> {
   try {
     // dev: /agui/config (Vite proxy) / prod: http://127.0.0.1:8000/agui/config
     const base = typeof __AGUI_BASE__ !== "undefined" ? __AGUI_BASE__ : "";
@@ -108,13 +113,15 @@ export async function fetchConfig(): Promise<void> {
     };
     config.clientLogVerbose = Boolean(serverConfig.clientLogVerbose ?? false);
 
-    console.info("Config loaded from server:", {
-      ui: config.ui,
-      agent: config.agent,
-      clientLogVerbose: config.clientLogVerbose,
-    });
-  } catch (error) {
-    console.error("Failed to load config from server:", error);
-    throw error; // Main側でキャッチしてエラー画面を表示
-  }
+	    console.info("Config loaded from server:", {
+	      ui: config.ui,
+	      agent: config.agent,
+	      clientLogVerbose: config.clientLogVerbose,
+	    });
+	  } catch (error) {
+	    if (!options.silent) {
+	      console.error("Failed to load config from server:", error);
+	    }
+	    throw error; // Main側でキャッチしてエラー画面を表示
+	  }
 }

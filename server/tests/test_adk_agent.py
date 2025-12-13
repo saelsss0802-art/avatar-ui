@@ -410,11 +410,10 @@ class TestADKAgent:
         async for event in adk_agent.run(sample_input):
             events.append(event)
 
-        # Should get RUN_STARTED, RUN_ERROR, and RUN_FINISHED
-        assert len(events) == 3
+        # RUN_ERROR はターミナルイベントなので RUN_FINISHED は来ない
+        assert len(events) == 2
         assert events[0].type == EventType.RUN_STARTED
         assert events[1].type == EventType.RUN_ERROR
-        assert events[2].type == EventType.RUN_FINISHED
         # Check that it's an error with meaningful content
         assert len(events[1].message) > 0
         assert events[1].code == 'BACKGROUND_EXECUTION_ERROR'
@@ -730,5 +729,4 @@ class TestADKAgent:
 
         # Verify the SystemMessage became the instruction
         assert captured_agent.instruction == "You are a math tutor."
-
 

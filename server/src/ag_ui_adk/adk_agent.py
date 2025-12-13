@@ -732,6 +732,17 @@ class ADKAgent:
                     execution.is_complete = True
                     logger.debug(f"Execution complete for thread {execution.thread_id} after {event_count} events")
                     break
+
+                # RUN_ERROR はターミナルイベントなので、これ以降のイベントはストリーミングしない
+                # (クライアント側の verifyEvents が RUN_ERROR 後のイベント送信を禁止している)
+                if isinstance(event, RunErrorEvent) or getattr(event, "type", None) == EventType.RUN_ERROR:
+                    logger.debug(
+                        "Received RUN_ERROR for thread %s, stopping event stream",
+                        execution.thread_id,
+                    )
+                    execution.is_complete = True
+                    yield event
+                    break
                 
                 logger.debug(f"Streaming event #{event_count}: {type(event).__name__} (thread {execution.thread_id})")
                 yield event
@@ -743,6 +754,7 @@ class ADKAgent:
                 # 実行が古くなっているかチェック
                 if execution.is_stale(self._execution_timeout):
                     logger.error(f"Execution timed out for thread {execution.thread_id}")
+                    execution.is_complete = True
                     yield RunErrorEvent(
                         type=EventType.RUN_ERROR,
                         message="Execution timed out",
@@ -830,9 +842,12 @@ class ADKAgent:
             logger.debug(f"Starting to stream events for execution {execution.thread_id}")
             has_tool_calls = False
             tool_call_ids = []
+            run_errored = False
 
             logger.debug(f"About to iterate over _stream_events for execution {execution.thread_id}")
             async for event in self._stream_events(execution):
+                if getattr(event, "type", None) == EventType.RUN_ERROR:
+                    run_errored = True
                 # HITL シナリオ用にツールコールを追跡
                 if isinstance(event, ToolCallEndEvent):
                     logger.info(f"Detected ToolCallEndEvent with id: {event.tool_call_id}")
@@ -860,13 +875,15 @@ class ADKAgent:
                     )
             logger.debug(f"Finished streaming events for execution {execution.thread_id}")
             
-            # RUN_FINISHED を発行
-            logger.debug(f"Emitting RUN_FINISHED for thread {input.thread_id}, run {input.run_id}")
-            yield RunFinishedEvent(
-                type=EventType.RUN_FINISHED,
-                thread_id=input.thread_id,
-                run_id=input.run_id
-            )
+            # RUN_ERROR が発行された場合は RUN_FINISHED を発行しない
+            # (クライアント側の verifyEvents が RUN_ERROR 後のイベント送信を禁止している)
+            if not run_errored:
+                logger.debug(f"Emitting RUN_FINISHED for thread {input.thread_id}, run {input.run_id}")
+                yield RunFinishedEvent(
+                    type=EventType.RUN_FINISHED,
+                    thread_id=input.thread_id,
+                    run_id=input.run_id
+                )
             
         except Exception as e:
             logger.error(f"Error in new execution: {e}", exc_info=True)

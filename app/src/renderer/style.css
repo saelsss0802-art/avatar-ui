@@ -68,6 +68,9 @@
   /* 透過度・輝度（main.ts から上書き） */
   --ui-opacity: 0.7;
   --ui-brightness: 1;
+
+  /* ウィンドウ外周の角丸（OS差を埋めるためUI側で統一） */
+  --window-radius: 10px;
 }
 
 /* --- 走査線オーバーレイ --- */
@@ -110,6 +113,8 @@ body {
   padding-bottom: 12px;              /* フッター下の余白 */
   box-sizing: border-box;
   position: relative;
+  border-radius: var(--window-radius);
+  overflow: hidden; /* 走査線オーバーレイ等も角丸でクリップ */
 }
 
 /* 上端の装飾ライン */

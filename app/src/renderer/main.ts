@@ -22,28 +22,39 @@ async function initApp() {
     throw new Error("UI elements missing");
   }
 
-  // 1. サーバーから設定を取得 (Fail-Fast)
-  try {
-    await fetchConfig();
-  } catch (error) {
-    // 設定取得失敗時のエラー表示
-    outputEl.innerHTML = `
-      <div style="color: #ff4444; padding: 20px;">
-        <h2>CONNECTION ERROR</h2>
-        <p>Failed to connect to AG-UI Server at <code>${config.server.url}</code>.</p>
-        <p>Please ensure the server is running:</p>
-        <pre>cd server && uvicorn main:app --reload</pre>
-        <p>Error details: ${String(error)}</p>
-      </div>
-    `;
-    return; // アプリ起動を中断
-  }
-
-  // 2. UI初期化 (設定ロード後)
+  // メタバーはプロダクト名 + バージョン（package.json 由来）
   if (metaBar) {
-    // メタバーはプロダクト名 + バージョン (不変)
     metaBar.textContent = `${pkg.name} v${pkg.version}`;
   }
+
+  // 1. サーバーから設定を取得（サーバー起動前でも落とさずに待機）
+  inputEl.disabled = true;
+  outputEl.textContent = "";
+  {
+    const line = document.createElement("div");
+    line.className = "text-line text-line--system";
+    line.textContent = "> Starting server...";
+    outputEl.appendChild(line);
+  }
+
+  const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+  let retryDelayMs = 250;
+  while (true) {
+    try {
+      await fetchConfig({ silent: true });
+      break;
+    } catch {
+      await sleep(retryDelayMs);
+      retryDelayMs = Math.min(Math.round(retryDelayMs * 1.6), 5000);
+    }
+  }
+
+  // 設定が取れたら通常表示へ
+  outputEl.textContent = "";
+  inputEl.disabled = false;
+  inputEl.focus();
+
+  // 2. UI初期化 (設定ロード後)
   // アバター枠内のラベルはエージェント名 (設定連動)
   avatarLabel.textContent = config.ui.nameTags.avatar;
 

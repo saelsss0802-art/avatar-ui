@@ -45,6 +45,7 @@ function createWindow() {
     frame: false,     // ネイティブタイトルバーを除去
     transparent: true, // ウィンドウ背景を透過させる
     backgroundColor: '#00000000', // 透過背景の色（完全透明）
+    roundedCorners: process.platform === 'darwin' ? false : undefined, // UI側の角丸と二重にしない
     hasShadow: false,  // 透過ウィンドウの影を消す
     title: 'Avatar UI', // フォールバック用タイトル
     icon: resolveIconPath(), // Windows/Linux でのウィンドウアイコン
@@ -85,7 +86,7 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     const icon = nativeImage.createFromPath(resolveIconPath())
     if (!icon.isEmpty()) {
-      app.dock.setIcon(icon)
+      app.dock?.setIcon(icon)
     }
   }
 
