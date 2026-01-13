@@ -1,0 +1,6 @@
+# requirements.txt - Python依存パッケージ
+# インストール: pip install -r requirements.txt
+
+xai-sdk>=1.5.0      # xAI Grok API クライアント
+pyyaml>=6.0         # 設定ファイル読み込み
+python-dotenv>=1.0  # .env読み込み
