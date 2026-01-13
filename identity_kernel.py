@@ -19,15 +19,20 @@ with open("config.yaml", encoding="utf-8") as f:
 # APIキーで認証されたクライアントを生成
 client = Client(api_key=os.getenv("XAI_API_KEY"))
 
-# 会話インスタンスを作成
+# 会話インスタンスを作成（履歴は自動保持）
 chat = client.chat.create(model=config["model"])
 
 # 人格の種（システムプロンプト）を注入
 chat.append(system(config["system_prompt"]))
 
-# 入力（ここを書き換えてテスト）
-chat.append(user("こんにちは、一言で自己紹介して"))
-
-# 応答を生成して出力
-response = chat.sample()
-print(f"{config['avatar_name']}: {response.content}")
+# 対話ループ（空入力またはCtrl+Cで終了）
+while True:
+    try:
+        prompt = input(f"{config['user_name']}: ")
+        if not prompt:
+            break
+        chat.append(user(prompt))
+        response = chat.sample()
+        print(f"{config['avatar_name']}: {response.content}")
+    except (KeyboardInterrupt, EOFError):
+        break
