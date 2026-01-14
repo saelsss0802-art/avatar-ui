@@ -29,24 +29,30 @@ export default {
       // システムプロンプト（SPECTRAの人格）- wrangler.tomlで設定
       const systemPrompt = env.SYSTEM_PROMPT;
       
-      // 入力メッセージを構築（システムプロンプト + ユーザーメッセージ）
-      const input = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: body.prompt || "Hello" },
-      ];
+      // APIリクエストボディを構築
+      const apiBody = {
+        model: env.GROK_MODEL || "grok-4-1-fast-non-reasoning",
+        input: [
+          { role: "user", content: body.prompt || "Hello" },
+        ],
+      };
+
+      // 会話継続の場合: previous_response_idを追加
+      if (body.previous_response_id) {
+        apiBody.previous_response_id = body.previous_response_id;
+      } else {
+        // 新規会話: システムプロンプトを先頭に追加
+        apiBody.input.unshift({ role: "system", content: systemPrompt });
+      }
 
       // Grok APIに転送
-      // モデル名は環境変数から取得（wrangler.tomlで設定）
       const grokResponse = await fetch("https://api.x.ai/v1/responses", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${env.XAI_API_KEY}`,  // 環境変数からAPIキー取得
+          "Authorization": `Bearer ${env.XAI_API_KEY}`,
         },
-        body: JSON.stringify({
-          model: env.GROK_MODEL || "grok-4-1-fast-non-reasoning",
-          input: input,
-        }),
+        body: JSON.stringify(apiBody),
       });
 
       // Grok APIのレスポンスを取得
