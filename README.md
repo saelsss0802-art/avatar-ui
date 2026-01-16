@@ -4,22 +4,26 @@
   📖 <a href="./README.ja.md">日本語版はこちら</a>
 </p>
 
-<p align="center">
-  <a href="https://orynth.dev/projects/avatar-ui" target="_blank" rel="noopener">
-    <img src="https://orynth.dev/api/badge/avatar-ui?theme=dark&style=default" alt="Featured on Orynth" width="260" height="80" />
-  </a>
-</p>
+A next-generation interface foundation where humans and AI coexist.  
+Supports Gemini, GPT, and Claude. An agent UI that runs on your desktop.
+
+![demo](./docs/assets/avatar-ui_demo_02.gif)
 
 <p align="center">
   <a href="https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ" target="_blank" rel="noopener">
     <img src="./docs/assets/geckoterminal-logo.png" alt="GeckoTerminal token info" width="320" />
   </a>
+  <br />
+  <sub>Token info by GeckoTerminal</sub>
 </p>
 
-A next-generation interface foundation where humans and AI coexist.  
-Supports Gemini, GPT, and Claude. An agent UI that runs on your desktop.
-
-![demo](./docs/assets/avatar-ui_demo_02.gif)
+<p align="center">
+  <a href="https://orynth.dev/projects/avatar-ui" target="_blank" rel="noopener">
+    <img src="https://orynth.dev/api/badge/avatar-ui?theme=dark&style=default" alt="Featured on Orynth" width="260" height="80" />
+  </a>
+  <br />
+  <sub>Market by Orynth</sub>
+</p>
 
 ## Features
 
@@ -165,6 +169,18 @@ Because the search sub-agent uses the Gemini API, you must set `GOOGLE_API_KEY`.
 - [Design doc](./docs/project.md) – Architecture, implementation details, roadmap
 - [AG-UI Protocol](https://docs.ag-ui.com/) – Protocol specification (official)
 - [Google ADK](https://google.github.io/adk-docs/) – Agent Development Kit (official)
+
+## Support
+
+AUI is the community token for supporting AVATAR UI.  
+It is listed on Orynth, and market data is available on GeckoTerminal.
+
+Token CA (Solana): `63rvcwia2reibpdJMCf71bPLqBLvPRu9eM2xmRvNory`
+
+- Orynth: https://orynth.dev/projects/avatar-ui
+- GeckoTerminal: https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ
+
+> This section is for informational purposes only and does not constitute investment advice.
 
 ## License
 

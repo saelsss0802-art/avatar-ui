@@ -3,19 +3,23 @@
 人と AI が共存する次世代インターフェース基盤。  
 Gemini・GPT・Claude 対応。デスクトップで動くエージェント UI。
 
-<p align="center">
-  <a href="https://orynth.dev/projects/avatar-ui" target="_blank" rel="noopener">
-    <img src="https://orynth.dev/api/badge/avatar-ui?theme=dark&style=default" alt="Featured on Orynth" width="260" height="80" />
-  </a>
-</p>
+![demo](./docs/assets/avatar-ui_demo_02.gif)
 
 <p align="center">
   <a href="https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ" target="_blank" rel="noopener">
     <img src="./docs/assets/geckoterminal-logo.png" alt="GeckoTerminal トークン情報" width="320" />
   </a>
+  <br />
+  <sub>Token info by GeckoTerminal</sub>
 </p>
 
-![demo](./docs/assets/avatar-ui_demo_02.gif)
+<p align="center">
+  <a href="https://orynth.dev/projects/avatar-ui" target="_blank" rel="noopener">
+    <img src="https://orynth.dev/api/badge/avatar-ui?theme=dark&style=default" alt="Featured on Orynth" width="260" height="80" />
+  </a>
+  <br />
+  <sub>Market by Orynth</sub>
+</p>
 
 ## 特徴
 
@@ -161,6 +165,18 @@ cp settings.default.json5 settings.json5
 - [設計書](./docs/project.md) – アーキテクチャ、実装詳細、ロードマップ
 - [AG-UI Protocol](https://docs.ag-ui.com/) – プロトコル仕様（公式）
 - [Google ADK](https://google.github.io/adk-docs/) – エージェント開発キット（公式）
+
+## サポート
+
+AUIはAVATAR UIを応援するコミュニティトークンです。  
+Orynthに掲載されており、市場情報はGeckoTerminalで確認できます。
+
+Token CA (Solana): `63rvcwia2reibpdJMCf71bPLqBLvPRu9eM2xmRvNory`
+
+- Orynth: https://orynth.dev/projects/avatar-ui
+- GeckoTerminal: https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ
+
+> 本セクションは情報提供を目的としており、投資助言や勧誘を意図するものではありません。
 
 ## ライセンス
 
