@@ -4,6 +4,18 @@
   📖 <a href="./README.ja.md">日本語版はこちら</a>
 </p>
 
+<p align="center">
+  <a href="https://orynth.dev/projects/avatar-ui" target="_blank" rel="noopener">
+    <img src="https://orynth.dev/api/badge/avatar-ui?theme=dark&style=default" alt="Featured on Orynth" width="260" height="80" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ" target="_blank" rel="noopener">
+    <img src="./docs/assets/geckoterminal-logo.png" alt="GeckoTerminal token info" width="320" />
+  </a>
+</p>
+
 A next-generation interface foundation where humans and AI coexist.  
 Supports Gemini, GPT, and Claude. An agent UI that runs on your desktop.
 

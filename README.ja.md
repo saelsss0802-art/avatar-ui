@@ -3,6 +3,18 @@
 人と AI が共存する次世代インターフェース基盤。  
 Gemini・GPT・Claude 対応。デスクトップで動くエージェント UI。
 
+<p align="center">
+  <a href="https://orynth.dev/projects/avatar-ui" target="_blank" rel="noopener">
+    <img src="https://orynth.dev/api/badge/avatar-ui?theme=dark&style=default" alt="Featured on Orynth" width="260" height="80" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ" target="_blank" rel="noopener">
+    <img src="./docs/assets/geckoterminal-logo.png" alt="GeckoTerminal トークン情報" width="320" />
+  </a>
+</p>
+
 ![demo](./docs/assets/avatar-ui_demo_02.gif)
 
 ## 特徴
