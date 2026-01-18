@@ -208,6 +208,18 @@ powershell -ExecutionPolicy Bypass -File scripts/register-task.ps1
 
 管理者 PowerShell で実行してください。
 
+### 6. Tunnel（cloudflared）自動起動
+
+Roblox など外部から常時アクセスするなら必須。SYSTEM 実行にする場合は
+`C:\ProgramData\cloudflared` に credentials と `config.yml` を置く。
+
+- タスク名: `SPECTRA Tunnel`
+- トリガー: 「スタートアップ時」
+- 実行ユーザー: SYSTEM（SID `S-1-5-18`）または自分のユーザー
+- 実行コマンド（例）:
+  - `C:\dev\bin\cloudflared.exe tunnel --config "C:\ProgramData\cloudflared\config.yml" run spectra`
+- `config.yml` の `credentials-file` と `hostname` が一致していること
+
 ## Roblox アダプタの使い方
 
 ### エンドポイント
