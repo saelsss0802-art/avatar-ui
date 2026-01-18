@@ -52,11 +52,9 @@ spectra/
 │       ├── GrokChat.server.lua
 │       └── ChatClient.client.lua
 │
-├── scripts/             # 運用補助（Windows/Linux）
-│   ├── register-task.ps1 # Windows: タスクスケジューラ登録
-│   ├── install-services.sh
-│   ├── spectra.service
-│   └── spectra-tunnel.service
+├── scripts/             # 運用補助（Windows）
+│   ├── register-task.ps1
+│   └── register-tunnel-task.ps1
 │
 └── docs/
     ├── GrokスタックAIエージェント設計仕様書.md
@@ -155,22 +153,26 @@ cloudflared tunnel route dns spectra spectra.your-domain.com
 # トンネルIDを確認
 cloudflared tunnel list
 
+# credentials を SYSTEM から参照できる場所へコピー
+New-Item -ItemType Directory -Force "C:\\ProgramData\\cloudflared" | Out-Null
+Copy-Item "$env:USERPROFILE\\.cloudflared\\<TUNNEL_ID>.json" "C:\\ProgramData\\cloudflared\\" -Force
+
 # 設定ファイル作成（TUNNEL_IDを置き換え）
 @'
 tunnel: spectra
-credentials-file: C:/Users/<User>/.cloudflared/<TUNNEL_ID>.json
+credentials-file: C:/ProgramData/cloudflared/<TUNNEL_ID>.json
 
 ingress:
   - hostname: spectra.your-domain.com
     service: http://localhost:8000
   - service: http_status:404
-'@ | Set-Content "$env:USERPROFILE\\.cloudflared\\config.yml"
+'@ | Set-Content "C:\\ProgramData\\cloudflared\\config.yml"
 ```
 
 ### 5. トンネル起動（手動）
 
 ```powershell
-cloudflared tunnel run spectra
+cloudflared tunnel --config "C:\\ProgramData\\cloudflared\\config.yml" run spectra
 ```
 
 Note: Windows の `cloudflared` は自動更新されないため、定期的に手動更新が必要です。
@@ -219,6 +221,12 @@ Roblox など外部から常時アクセスするなら必須。SYSTEM 実行に
 - 実行コマンド（例）:
   - `C:\dev\bin\cloudflared.exe tunnel --config "C:\ProgramData\cloudflared\config.yml" run spectra`
 - `config.yml` の `credentials-file` と `hostname` が一致していること
+
+スクリプトで登録する場合（任意）:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/register-tunnel-task.ps1
+```
 
 ## Roblox アダプタの使い方
 
@@ -351,29 +359,18 @@ SPECTRA_API_KEY=your-secret-key
 
 ## トラブルシューティング
 
-### サービスが起動しない
+### タスクが起動しない
 
-```bash
-# ログを確認
-journalctl -u spectra -n 50
-
-# よくある原因
-# - .env ファイルがない
-# - XAI_API_KEY が設定されていない
-# - venv のパスが間違っている
+```powershell
+Get-ScheduledTaskInfo -TaskName "SPECTRA Core"
+Get-ScheduledTaskInfo -TaskName "SPECTRA Tunnel"
 ```
 
-### Tunnel が接続できない
-
-```bash
-# ログを確認
-journalctl -u spectra-tunnel -n 50
-
-# よくある原因
-# - ~/.cloudflared/config.yml がない
-# - credentials-file のパスが間違っている
-# - cloudflared login が完了していない
-```
+よくある原因:
+- `.env` がない / `XAI_API_KEY` が空
+- `C:\dev\spectra\.venv\Scripts\python.exe` が存在しない
+- `C:\ProgramData\cloudflared\config.yml` がない
+- `credentials-file` のパスが間違っている
 
 ### 502 Bad Gateway
 

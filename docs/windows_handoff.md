@@ -53,22 +53,29 @@ cloudflared tunnel route dns spectra spectra.your-domain.com
 cloudflared tunnel list
 ```
 
-`$env:USERPROFILE\.cloudflared\config.yml` を作成:
+credentials を ProgramData にコピー:
+```powershell
+New-Item -ItemType Directory -Force C:\ProgramData\cloudflared | Out-Null
+Copy-Item "$env:USERPROFILE\\.cloudflared\\<TUNNEL_ID>.json" "C:\\ProgramData\\cloudflared\\" -Force
+```
+
+`C:\ProgramData\cloudflared\config.yml` を作成:
 ```powershell
 @'
 tunnel: spectra
-credentials-file: C:/Users/<User>/.cloudflared/<TUNNEL_ID>.json
+# SYSTEM で動かす場合は ProgramData を使う
+credentials-file: C:/ProgramData/cloudflared/<TUNNEL_ID>.json
 
 ingress:
   - hostname: spectra.your-domain.com
     service: http://localhost:8000
   - service: http_status:404
-'@ | Set-Content "$env:USERPROFILE\\.cloudflared\\config.yml"
+'@ | Set-Content "C:\\ProgramData\\cloudflared\\config.yml"
 ```
 
 手動起動:
 ```powershell
-cloudflared tunnel run spectra
+cloudflared tunnel --config "C:\\ProgramData\\cloudflared\\config.yml" run spectra
 ```
 Note: Windows版 `cloudflared` は自動更新されないため手動更新が必要。
 
@@ -78,6 +85,11 @@ Note: Windows版 `cloudflared` は自動更新されないため手動更新が�
 powershell -ExecutionPolicy Bypass -File scripts/register-task.ps1
 ```
 
+### 7) Tunnel 自動起動（Windowsタスク）
+管理者 PowerShell で:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/register-tunnel-task.ps1
+```
+
 ## 注意点
 - WSL で `winget` を実行しても Windows にインストールされるだけで、リポには影響しない。
-- `scripts/` の systemd 関連は Linux 用の名残（Windows運用では使わない）。
