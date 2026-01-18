@@ -96,8 +96,8 @@ spectra/
 │   └── tools/          # 実行能力
 │
 ├── command/            # 指令室（privileged）
-│   ├── gui/
-│   └── discord/
+│   ├── console.py      # デスクトップ（予定）
+│   └── discord.py      # モバイル（予定）
 │
 ├── channels/           # 対話経路（normal）
 │   ├── x/

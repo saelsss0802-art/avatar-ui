@@ -43,8 +43,7 @@ spectra/
 │   └── main.py          # FastAPIサーバー
 │
 ├── command/             # 指令室（将来実装）
-│   ├── gui/             # デスクトップ
-│   └── discord/         # モバイル
+│   └── console.py       # デスクトップ
 │
 ├── channels/            # 対話経路
 │   └── roblox/
