@@ -8,7 +8,7 @@ Roblox、CLI、その他のプラットフォームから統一されたAPIで�
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  クライアント                                                │
-│  [Roblox]  [CLI]  [その他]                                  │
+│  [Roblox]  [Console]  [その他]                              │
 │      ↓       ↓       ↓                                      │
 └──────┼───────┼───────┼──────────────────────────────────────┘
        │       │       │
@@ -42,8 +42,8 @@ spectra/
 │   ├── __init__.py
 │   └── main.py          # FastAPIサーバー
 │
-├── command/             # 指令室（将来実装）
-│   └── console.py       # デスクトップ
+├── command/             # 指令室
+│   └── console/         # Electronコンソール
 │
 ├── channels/            # 対話経路
 │   └── roblox/
@@ -52,7 +52,8 @@ spectra/
 │       ├── GrokChat.server.lua
 │       └── ChatClient.client.lua
 │
-├── scripts/
+├── scripts/             # 運用補助（Windows/Linux）
+│   ├── register-task.ps1 # Windows: タスクスケジューラ登録
 │   ├── install-services.sh
 │   ├── spectra.service
 │   └── spectra-tunnel.service
@@ -68,33 +69,34 @@ spectra/
 ### 前提条件
 
 - Python 3.10+
-- WSL2 (Ubuntu)
+- Windows 10/11
 - Cloudflareアカウント（Tunnel用）
 - xAI APIキー
 
 ### 1. リポジトリのクローン
 
-```bash
-cd ~/dev
+```powershell
+mkdir C:\dev
+cd C:\dev
 git clone <repository-url> spectra
 cd spectra
 ```
 
 ### 2. 仮想環境のセットアップ
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
 ### 3. 環境変数の設定
 
-```bash
-cat > .env << 'EOF'
+```powershell
+@'
 XAI_API_KEY=your-xai-api-key-here
 SPECTRA_API_KEY=your-secret-key-here
-EOF
+'@ | Set-Content .env
 ```
 
 | 変数 | 必須 | 説明 |
@@ -104,9 +106,9 @@ EOF
 
 ### 4. ローカルでテスト起動
 
-```bash
-source .venv/bin/activate
-uvicorn core.main:app --host 127.0.0.1 --port 8000
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn core.main:app --host 127.0.0.1 --port 8000
 ```
 
 別ターミナルで動作確認：
@@ -120,26 +122,26 @@ curl -X POST http://127.0.0.1:8000/roblox \
   -d '{"prompt": "こんにちは"}'
 ```
 
-## Cloudflare Tunnel 設定
+## Cloudflare Tunnel 設定（Windows）
 
 ### 1. cloudflared のインストール
 
-```bash
-curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-sudo dpkg -i cloudflared.deb
-rm cloudflared.deb
+```powershell
+winget install --id Cloudflare.cloudflared
 ```
+
+または、公式の Windows バイナリを直接ダウンロードして PATH に配置します。
+例: `https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe`
 
 ### 2. Cloudflare にログイン
 
-```bash
-cloudflared login
-# ブラウザが開くので、ドメインを選択して認証
+```powershell
+cloudflared tunnel login
 ```
 
 ### 3. トンネル作成
 
-```bash
+```powershell
 # トンネル作成
 cloudflared tunnel create spectra
 
@@ -149,73 +151,62 @@ cloudflared tunnel route dns spectra spectra.your-domain.com
 
 ### 4. 設定ファイル作成
 
-```bash
+```powershell
 # トンネルIDを確認
 cloudflared tunnel list
 
 # 設定ファイル作成（TUNNEL_IDを置き換え）
-cat > ~/.cloudflared/config.yml << 'EOF'
+@'
 tunnel: spectra
-credentials-file: /home/u/.cloudflared/<TUNNEL_ID>.json
+credentials-file: C:/Users/<User>/.cloudflared/<TUNNEL_ID>.json
 
 ingress:
   - hostname: spectra.your-domain.com
     service: http://localhost:8000
   - service: http_status:404
-EOF
+'@ | Set-Content "$env:USERPROFILE\\.cloudflared\\config.yml"
 ```
 
 ### 5. トンネル起動（手動）
 
-```bash
+```powershell
 cloudflared tunnel run spectra
 ```
 
-## サービス化（自動起動）
+Note: Windows の `cloudflared` は自動更新されないため、定期的に手動更新が必要です。
+
+## 自動起動（Windows タスクスケジューラ）
 
 PC起動時に自動でSPECTRAを起動するための設定。
 
-### 1. サービスのインストール
+### 1. タスク作成
 
-```bash
-cd ~/dev/spectra
-sudo bash scripts/install-services.sh
+- 名前: `SPECTRA Core`
+- 実行ユーザー: 「ユーザーがログオンしているかどうかにかかわらず実行する」
+- 「最上位の特権で実行する」にチェック
+
+### 2. トリガー
+
+- 「スタートアップ時」
+
+### 3. 操作
+
+- プログラム: `C:\dev\spectra\.venv\Scripts\python.exe`
+- 引数: `-m uvicorn core.main:app --host 127.0.0.1 --port 8000`
+- 開始 (作業フォルダー): `C:\dev\spectra`
+
+### 4. 設定
+
+- 「失敗したら再起動する」を有効化
+- 「すでに実行中なら新しいインスタンスを開始しない」
+
+### 5. スクリプトで登録（任意）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/register-task.ps1
 ```
 
-または手動で：
-
-```bash
-# サービスファイルをコピー
-sudo cp scripts/spectra.service /etc/systemd/system/
-sudo cp scripts/spectra-tunnel.service /etc/systemd/system/
-
-# リロード・有効化・起動
-sudo systemctl daemon-reload
-sudo systemctl enable spectra spectra-tunnel
-sudo systemctl start spectra spectra-tunnel
-```
-
-### 2. 状態確認
-
-```bash
-sudo systemctl status spectra spectra-tunnel
-```
-
-### 3. 便利コマンド
-
-```bash
-# ログを見る（リアルタイム）
-journalctl -u spectra -f
-
-# 再起動（コード変更後）
-sudo systemctl restart spectra spectra-tunnel
-
-# 停止
-sudo systemctl stop spectra spectra-tunnel
-
-# 無効化（自動起動をやめる）
-sudo systemctl disable spectra spectra-tunnel
-```
+管理者 PowerShell で実行してください。
 
 ## Roblox アダプタの使い方
 

@@ -41,6 +41,7 @@
 | CLI廃止 | CommandはConsole（Electron）とDiscordに集約 |
 | 人間が最終決定権 | 承認なしで外部投稿・危険操作しない |
 | 同一プロセス | Core + Channels は分離しない（シンプル優先） |
+| Windows統一 | 運用/開発はWindowsネイティブで完結（WSL前提にしない） |
 
 ---
 
@@ -97,7 +98,7 @@
 ### 5.2 プロセス構成
 
 ```
-[Python Core]（常時稼働・systemd）
+[Python Core]（常時稼働・Windows自動起動）
  ├── FastAPI /v1/think
  ├── channels/roblox
  ├── channels/x（予定）
@@ -110,7 +111,7 @@
 ```
 
 **ポイント:**
-- Core は PC 起動時に自動起動（systemd）
+- Core は Windows 起動時に自動起動（タスクスケジューラ等）
 - Console は使いたいときだけ起動
 - 同一PC運用のため、プロセス分離は不要（シンプル優先）
 
@@ -145,7 +146,7 @@ spectra/
             │ HTTP (localhost)
             ▼
 ┌──────────────────────────────────────────────┐
-│ Python Core（常時稼働）                        │
+│ Python Core（常時稼働・Windows）               │
 │  ├ /v1/think                                  │
 │  ├ channels/roblox                            │
 │  ├ channels/x（予定）                          │
@@ -207,7 +208,7 @@ spectra/
 | 2026-01-18 | Console技術: Electron (TypeScript) を採用 |
 | 2026-01-18 | Core + Channels は Python（xai-sdk直接使用） |
 | 2026-01-18 | 同一プロセス構成を採用（分離は不要、シンプル優先） |
-| 2026-01-18 | Core は systemd で常時稼働、Console は手動起動 |
+| 2026-01-18 | Core は Windows自動起動、Console は手動起動 |
 | 2026-01-18 | 状態管理（/status等）は今は不要、拡張時に検討 |
 
 ---
