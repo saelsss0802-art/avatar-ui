@@ -43,38 +43,38 @@ MONO_FALLBACKS = [
 
 
 # ===== スタイルシート =====
-STYLESHEET = f"""
-QMainWindow {
+STYLESHEET = """
+QMainWindow {{
     background-color: #000000;
-}
+}}
 
-QWidget {
+QWidget {{
     background-color: transparent;
     color: #dfffee;
     font-family: "Noto Sans JP", "Yu Gothic UI", "Meiryo", "Segoe UI", sans-serif;
-}
+}}
 
-QFrame#mainFrame {
+QFrame#mainFrame {{
     background-color: rgba(0, 0, 0, 0.45);
     border: 1px solid rgba(0, 230, 118, 0.6);
     border-radius: 8px;
-}
+}}
 
-QFrame#chatFrame {
-    background-color: {PANEL_BG};
+QFrame#chatFrame {{
+    background-color: {panel_bg};
     border: 1px solid rgba(0, 230, 118, 0.4);
     border-radius: 6px;
-}
+}}
 
-QFrame#avatarFrame {
-    background-color: {PANEL_BG};
+QFrame#avatarFrame {{
+    background-color: {panel_bg};
     border: 1px solid rgba(0, 230, 118, 0.4);
     border-radius: 6px;
     min-width: 200px;
     max-width: 200px;
-}
+}}
 
-QTextEdit {
+QTextEdit {{
     background-color: transparent;
     color: #dfffee;
     border: none;
@@ -83,9 +83,9 @@ QTextEdit {
     line-height: 1.5;
     selection-background-color: rgba(0, 230, 118, 0.25);
     font-family: "Cascadia Code", "Noto Sans JP", "Yu Gothic UI", "Meiryo", monospace;
-}
+}}
 
-QLineEdit {
+QLineEdit {{
     background-color: rgba(0, 0, 0, 0.6);
     color: #dfffee;
     border: 1px solid rgba(0, 230, 118, 0.45);
@@ -93,69 +93,69 @@ QLineEdit {
     padding: 12px 16px;
     font-size: 14px;
     selection-background-color: rgba(0, 230, 118, 0.25);
-}
+}}
 
-QLineEdit:focus {
-    border-color: {THEME_COLOR};
+QLineEdit:focus {{
+    border-color: {theme_color};
     background-color: rgba(0, 0, 0, 0.75);
-}
+}}
 
-QPushButton {
-    background-color: {THEME_COLOR};
+QPushButton {{
+    background-color: {theme_color};
     color: #00150a;
     border: none;
     border-radius: 6px;
     padding: 12px 24px;
     font-size: 14px;
     font-weight: bold;
-}
+}}
 
-QPushButton:hover {
+QPushButton:hover {{
     background-color: #00cc66;
-}
+}}
 
-QPushButton:pressed {
+QPushButton:pressed {{
     background-color: #00994d;
-}
+}}
 
-QPushButton:disabled {
+QPushButton:disabled {{
     background-color: rgba(0, 60, 30, 0.8);
     color: #00150a;
-}
+}}
 
-QLabel#titleLabel {
-    color: {THEME_COLOR};
+QLabel#titleLabel {{
+    color: {theme_color};
     font-size: 18px;
     font-weight: bold;
     padding: 8px;
-}
+}}
 
-QLabel#statusLabel {
+QLabel#statusLabel {{
     color: rgba(0, 230, 118, 0.75);
     font-size: 11px;
     padding: 4px 8px;
-}
+}}
 
-QScrollBar:vertical {
+QScrollBar:vertical {{
     background: #0a0e14;
     width: 8px;
     border-radius: 4px;
-}
+}}
 
-QScrollBar::handle:vertical {
+QScrollBar::handle:vertical {{
     background: #1a3a2a;
     border-radius: 4px;
     min-height: 30px;
-}
+}}
 
-QScrollBar::handle:vertical:hover {
+QScrollBar::handle:vertical:hover {{
     background: #00e676;
-}
+}}
 
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
-}
-"""
+}}
+""".format(panel_bg=PANEL_BG, theme_color=THEME_COLOR)
 
 
 class ApiWorker(QThread):
