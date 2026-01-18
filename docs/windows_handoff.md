@@ -93,3 +93,35 @@ powershell -ExecutionPolicy Bypass -File scripts/register-tunnel-task.ps1
 
 ## 注意点
 - WSL で `winget` を実行しても Windows にインストールされるだけで、リポには影響しない。
+
+## WSL から git push が失敗する場合
+症状: `Could not resolve host: github.com`
+
+一次対処（WSL bash）:
+```bash
+sudo sh -c 'printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf'
+getent hosts github.com
+```
+
+恒久対応（WSL bash、実行後に Windows PowerShell で `wsl --shutdown` が必要）:
+```bash
+sudo tee /etc/wsl.conf > /dev/null <<'EOF'
+[network]
+generateResolvConf = false
+EOF
+
+sudo sh -c 'printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf'
+```
+
+代替手段（WSL から push せず、Windows 側で反映）:
+```bash
+mkdir -p /mnt/c/dev/spectra/patches
+git format-patch origin/main --stdout > /mnt/c/dev/spectra/patches/spectra-wsl.patch
+```
+
+Windows PowerShell:
+```powershell
+cd C:\dev\spectra
+git am .\patches\spectra-wsl.patch
+git push
+```
