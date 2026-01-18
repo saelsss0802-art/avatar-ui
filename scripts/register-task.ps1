@@ -1,6 +1,7 @@
 Param(
   [string]$ProjectRoot = "C:\\dev\\spectra",
-  [string]$TaskName = "SPECTRA Core"
+  [string]$TaskName = "SPECTRA Core",
+  [string]$UserId = "S-1-5-18"
 )
 
 $pythonPath = Join-Path $ProjectRoot ".venv\\Scripts\\python.exe"
@@ -26,7 +27,7 @@ $settings = New-ScheduledTaskSettingsSet `
   -DontStopIfGoingOnBatteries
 
 $principal = New-ScheduledTaskPrincipal `
-  -UserId "NT AUTHORITY\\SYSTEM" `
+  -UserId $UserId `
   -LogonType ServiceAccount `
   -RunLevel Highest
 
