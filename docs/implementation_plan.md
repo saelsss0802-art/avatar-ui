@@ -36,10 +36,11 @@
 | 不変条件 | 説明 |
 |----------|------|
 | コア一元化 | 脳（LLM + Context）は1つだけ |
-| xai-sdk必須 | 推論はGrok APIのみ |
+| xai-sdk必須 | 推論はGrok APIのみ（Python） |
 | 人格維持 | 既存のシステムプロンプトを継承 |
-| CLI廃止 | GUI一本化（Discord含む） |
+| CLI廃止 | CommandはConsole（Electron）とDiscordに集約 |
 | 人間が最終決定権 | 承認なしで外部投稿・危険操作しない |
+| 同一プロセス | Core + Channels は分離しない（シンプル優先） |
 
 ---
 
@@ -51,8 +52,8 @@
 | **Channels** | SPECTRAが世界と対話する経路 | normal（一般） |
 
 ### Command（指令室）
-- GUI（デスクトップ本部）
-- Discord（モバイル出先）
+- Console（デスクトップ本部）← Electron (TypeScript)
+- Discord（外出時の簡易司令部）← Python（承認/監視/指示の統制UI）
 
 ### Channels（対話経路）
 - X（承認必要）
@@ -66,10 +67,10 @@
 |------|------|
 | **判断** | Core（LLM） |
 | **承認・監視** | Command（GUI/Discord） |
-| **対話** | Channels（X/Roblox） |
+| **対外対話** | Channels（X/Roblox） |
 | **実行** | Tools（ファイル/シェル/Git） |
 
-**原則**: この4つの責務が混ざらないこと。
+**原則**: この4つの責務が混ざらないこと（Command内の会話は統制UIの一部）。
 
 ---
 
@@ -86,80 +87,101 @@
 
 ## 5. 構造
 
-### 5.1 ディレクトリ
+### 5.1 技術選定
+
+| 層 | 言語 | 理由 |
+|----|------|------|
+| **Core + Channels** | Python | xai-sdk公式対応、MCP/Voice/Collections対応 |
+| **Console** | TypeScript (Electron) | xterm.js、自由なUI、Web資産活用 |
+
+### 5.2 プロセス構成
+
+```
+[Python Core]（常時稼働・systemd）
+ ├── FastAPI /v1/think
+ ├── channels/roblox
+ ├── channels/x（予定）
+ └── command/discord（予定 / 統制UI）
+
+[Electron Console]（手動起動・使うときだけ）
+ ├── チャットUI
+ ├── xterm.js（CLI内蔵）
+ └── ダッシュボード（予定）
+```
+
+**ポイント:**
+- Core は PC 起動時に自動起動（systemd）
+- Console は使いたいときだけ起動
+- 同一PC運用のため、プロセス分離は不要（シンプル優先）
+
+### 5.3 ディレクトリ
 
 ```
 spectra/
-├── core/
-│   ├── brain.py        # LLM + Context
-│   ├── policy.py       # 承認判定
-│   └── tools/          # 実行能力
+├── core/                 # Python: LLM + API（内部構造は未定）
+│   └── main.py           # FastAPI エントリポイント
 │
-├── command/            # 指令室（privileged）
-│   ├── console.py      # デスクトップ（予定）
-│   └── discord.py      # モバイル（予定）
+├── command/              # 指令室（privileged）
+│   ├── console/          # Electron (TypeScript)
+│   └── discord/          # Python（統制UI: 承認/監視/指示）
 │
-├── channels/           # 対話経路（normal）
-│   ├── x/
-│   └── roblox/
+├── channels/             # 対話経路（normal）- Python
+│   ├── roblox/           # 実装済み
+│   └── x/                # 予定
 │
 ├── config.yaml
 └── .env
 ```
 
-### 5.2 共通インターフェース
+**Note**: Discord は `command/` に一本化。統制UIとしての会話/承認/監視を担う。
 
-```python
-@dataclass
-class Event:
-    source: str              # "gui", "discord", "x", "roblox"
-    trust_level: str         # "privileged" | "normal"
-    requires_approval: bool
-    priority: int
-    intent: str
-    payload: dict
-
-@dataclass
-class Response:
-    target: str
-    payload: dict
-    correlation_id: str
-```
-
-### 5.3 構造図
+### 5.4 構造図
 
 ```
-                   ↔ Command: GUI（本部）
-                   ↔ Command: Discord（出先）
-[Core: LLM + Context + Tools]
-                   ↔ Channels: X（承認必要）
-                   ↔ Channels: Roblox（リアルタイム）
+┌───────────────────────────┐
+│ Electron Console (TS)     │
+│ 手動起動 / チャット・CLI    │
+└───────────┬───────────────┘
+            │ HTTP (localhost)
+            ▼
+┌──────────────────────────────────────────────┐
+│ Python Core（常時稼働）                        │
+│  ├ /v1/think                                  │
+│  ├ channels/roblox                            │
+│  ├ channels/x（予定）                          │
+│  ├ command/discord（統制UI）                   │
+│  │   └ Discord API（外部）                     │
+│  └ xai-sdk（Grok API）                         │
+└──────────────────────────────────────────────┘
+            │
+            │ Cloudflare Tunnel
+            ▼
+        外部（Roblox等）
 ```
 
 ---
 
 ## 6. 実装フェーズ
 
-### Phase 0: 既存資産の整理
-- [ ] 既存の `adapters/` と `core/` を全体レビュー
-- [ ] `channels/roblox/` への移行方針を決定
-- [ ] 既存のRoblox Luaの入出力仕様を再確認
+### Phase 0: 既存資産の整理 ✅
+- [x] `adapters/` → `channels/` に移行
+- [x] `channels/roblox/` 動作確認
+- [x] Core + Roblox の統合確認
 
-### Phase 1: Coreの最小骨格
+### Phase 1: Command（指令室）最小実装
+- [ ] Console: Electron + xterm.js で基本画面
+- [ ] Console: Core API との通信（/v1/think）
+- [ ] Discord: 承認/拒否 + 対話の最小フロー（予定）
+
+### Phase 2: Coreの最小骨格
 - [ ] `core/brain.py` — LLM + Context の統合
 - [ ] `core/policy.py` — 承認判定の最小版
 - [ ] `core/tools/` — 最小セット（read-only中心）
 - [ ] Event/Response の型定義
 
-### Phase 2: Command（指令室）最小実装
-- [ ] GUI: 「指示入力」「承認」「ログ表示」の最小画面（PyQt6）
-- [ ] Discord: 承認/拒否の最小フロー（ボタン or リアクション）
-- [ ] Command経由のEvent送受信を統一インターフェース化
-
-### Phase 3: Channels（対話経路）最小実装
-- [ ] Roblox: 既存挙動を維持したまま `channels/roblox/` に接続
+### Phase 3: Channels（対話経路）拡張
+- [x] Roblox: 動作確認済み
 - [ ] X: 最小の投稿/返信フロー（承認必須）
-- [ ] ChannelからのEvent生成とResponse返却の統一
 
 ### Phase 4: 安全柵
 - [ ] Tool Runnerの危険コマンド禁止リスト
@@ -167,7 +189,7 @@ class Response:
 - [ ] .env へのアクセス禁止
 
 ### Phase 5: 結合テスト
-- [ ] 承認フローの通しテスト（GUI/Discord）
+- [ ] 承認フローの通しテスト（Console/Discord）
 - [ ] Roblox往復テスト
 - [ ] X承認投稿テスト
 
@@ -178,10 +200,15 @@ class Response:
 | 日付 | 決定 |
 |------|------|
 | 2026-01-18 | 目的・非目的・成功基準を設計仕様書に明文化 |
-| 2026-01-18 | CLI廃止、GUI一本化（Discord含む） |
+| 2026-01-18 | CLI廃止、CommandはConsole+Discordに集約 |
 | 2026-01-18 | Command と Channels はディレクトリ分離 |
 | 2026-01-18 | 共通 Event/Response で統一 |
 | 2026-01-18 | SPECTRAはOSS化しない（AUIの実証体） |
+| 2026-01-18 | Console技術: Electron (TypeScript) を採用 |
+| 2026-01-18 | Core + Channels は Python（xai-sdk直接使用） |
+| 2026-01-18 | 同一プロセス構成を採用（分離は不要、シンプル優先） |
+| 2026-01-18 | Core は systemd で常時稼働、Console は手動起動 |
+| 2026-01-18 | 状態管理（/status等）は今は不要、拡張時に検討 |
 
 ---
 
@@ -192,3 +219,16 @@ class Response:
 | 認証方式 | 保留 | HMAC/署名/トークンの比較が必要 |
 | trust_level の命名 | 保留 | privileged/normal or authority/normal |
 | 承認タイムアウト | 保留 | 何分で破棄するか |
+| 会話履歴の外部化 | 保留 | 今はメモリ、マルチサーバー時にDB/Redis化 |
+
+---
+
+## 9. 設計原則
+
+| 原則 | 説明 |
+|------|------|
+| **合理** | 使わない機能を作らない |
+| **効率** | 最短経路で実装する |
+| **シンプル** | コードを増やさない、複雑な分離をしない |
+
+**「必要になったら追加」が基本方針。**
