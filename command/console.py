@@ -4,82 +4,105 @@ SPECTRA Console - Cyberpunk GUI
 """
 import os
 import sys
+from pathlib import Path
 import requests
 from dotenv import load_dotenv
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QLineEdit, QPushButton, QLabel, QFrame, QSplitter
+    QTextEdit, QLineEdit, QPushButton, QLabel, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QFontDatabase, QPainter, QColor, QPen, QLinearGradient
+from PyQt6.QtGui import QFont, QFontDatabase, QPainter, QColor, QPen, QLinearGradient, QPixmap
 
 load_dotenv()
 
+APP_ROOT = Path(__file__).resolve().parents[1]
 CORE_URL = "http://localhost:8000/v1/think"
 SESSION_ID = "master-session"
 API_KEY = os.getenv("SPECTRA_API_KEY", "")
 
+# テーマ（avatar-ui classic に寄せた配色）
+THEME_COLOR = "#00e676"
+USER_COLOR = "#86ffe0"
+PANEL_BG = "rgba(0, 20, 10, 0.35)"
+
+# フォント候補（日本語優先）
+FONT_FALLBACKS = [
+    "Noto Sans JP",
+    "Noto Sans CJK JP",
+    "Yu Gothic UI",
+    "Meiryo",
+    "MS PGothic",
+    "Segoe UI",
+]
+MONO_FALLBACKS = [
+    "Cascadia Code",
+    "JetBrains Mono",
+    "Consolas",
+]
+
 
 # ===== スタイルシート =====
-STYLESHEET = """
+STYLESHEET = f"""
 QMainWindow {
-    background-color: #0a0a0a;
+    background-color: #000000;
 }
 
 QWidget {
     background-color: transparent;
-    color: #00ff88;
-    font-family: "Cascadia Code", "JetBrains Mono", "Consolas", "Meiryo", "Yu Gothic UI", sans-serif;
+    color: #dfffee;
+    font-family: "Noto Sans JP", "Yu Gothic UI", "Meiryo", "Segoe UI", sans-serif;
 }
 
 QFrame#mainFrame {
-    background-color: #0d1117;
-    border: 2px solid #00ff88;
+    background-color: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(0, 230, 118, 0.6);
     border-radius: 8px;
 }
 
 QFrame#chatFrame {
-    background-color: #0a0e14;
-    border: 1px solid #1a3a2a;
+    background-color: {PANEL_BG};
+    border: 1px solid rgba(0, 230, 118, 0.4);
     border-radius: 6px;
 }
 
 QFrame#avatarFrame {
-    background-color: #0a0e14;
-    border: 1px solid #1a3a2a;
+    background-color: {PANEL_BG};
+    border: 1px solid rgba(0, 230, 118, 0.4);
     border-radius: 6px;
-    min-width: 180px;
-    max-width: 180px;
+    min-width: 200px;
+    max-width: 200px;
 }
 
 QTextEdit {
-    background-color: #0a0e14;
-    color: #00ff88;
+    background-color: transparent;
+    color: #dfffee;
     border: none;
     padding: 12px;
     font-size: 13px;
-    line-height: 1.6;
-    selection-background-color: #00ff8840;
+    line-height: 1.5;
+    selection-background-color: rgba(0, 230, 118, 0.25);
+    font-family: "Cascadia Code", "Noto Sans JP", "Yu Gothic UI", "Meiryo", monospace;
 }
 
 QLineEdit {
-    background-color: #0d1117;
-    color: #00ff88;
-    border: 2px solid #1a3a2a;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #dfffee;
+    border: 1px solid rgba(0, 230, 118, 0.45);
     border-radius: 6px;
     padding: 12px 16px;
     font-size: 14px;
-    selection-background-color: #00ff8840;
+    selection-background-color: rgba(0, 230, 118, 0.25);
 }
 
 QLineEdit:focus {
-    border-color: #00ff88;
-    background-color: #0a0e14;
+    border-color: {THEME_COLOR};
+    background-color: rgba(0, 0, 0, 0.75);
 }
 
 QPushButton {
-    background-color: #00ff88;
-    color: #0a0a0a;
+    background-color: {THEME_COLOR};
+    color: #00150a;
     border: none;
     border-radius: 6px;
     padding: 12px 24px;
@@ -88,35 +111,29 @@ QPushButton {
 }
 
 QPushButton:hover {
-    background-color: #00cc6a;
+    background-color: #00cc66;
 }
 
 QPushButton:pressed {
-    background-color: #009950;
+    background-color: #00994d;
 }
 
 QPushButton:disabled {
-    background-color: #1a3a2a;
-    color: #0a0a0a;
+    background-color: rgba(0, 60, 30, 0.8);
+    color: #00150a;
 }
 
 QLabel#titleLabel {
-    color: #00ff88;
+    color: {THEME_COLOR};
     font-size: 18px;
     font-weight: bold;
     padding: 8px;
 }
 
 QLabel#statusLabel {
-    color: #00aa55;
+    color: rgba(0, 230, 118, 0.75);
     font-size: 11px;
     padding: 4px 8px;
-}
-
-QLabel#avatarLabel {
-    color: #00ff88;
-    font-size: 12px;
-    padding: 8px;
 }
 
 QScrollBar:vertical {
@@ -132,7 +149,7 @@ QScrollBar::handle:vertical {
 }
 
 QScrollBar::handle:vertical:hover {
-    background: #00ff88;
+    background: #00e676;
 }
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
@@ -170,12 +187,72 @@ class ApiWorker(QThread):
             self.error.emit(str(e))
 
 
+def _find_asset(filename: str) -> Path | None:
+    candidates = [
+        APP_ROOT / filename,
+        APP_ROOT / "command" / "assets" / filename,
+        APP_ROOT / "command" / "assets" / "avatar" / filename,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
+def _install_fonts() -> list[str]:
+    """同梱フォントがあれば読み込む（存在しなければ無視）。"""
+    font_paths = [
+        APP_ROOT / "command" / "assets" / "fonts" / "NotoSansJP-Regular.otf",
+        APP_ROOT / "command" / "assets" / "fonts" / "NotoSansJP-Regular.ttf",
+        APP_ROOT / "NotoSansJP-Regular.otf",
+        APP_ROOT / "NotoSansJP-Regular.ttf",
+    ]
+    loaded_families: list[str] = []
+    for path in font_paths:
+        if not path.exists():
+            continue
+        font_id = QFontDatabase.addApplicationFont(str(path))
+        if font_id < 0:
+            continue
+        loaded_families.extend(QFontDatabase.applicationFontFamilies(font_id))
+    return loaded_families
+
+
+class CommandSurface(QWidget):
+    """レトロ端末風の背景と走査線を描画する。"""
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 背景グラデーション
+        grad = QLinearGradient(0, 0, 0, self.height())
+        grad.setColorAt(0.0, QColor(0, 0, 0))
+        grad.setColorAt(1.0, QColor(0, 8, 4))
+        painter.fillRect(self.rect(), grad)
+
+        # 上部ライン
+        pen = QPen(QColor(0, 230, 118, 160), 2)
+        painter.setPen(pen)
+        painter.drawLine(24, 18, self.width() - 24, 18)
+
+        # 走査線
+        scan_pen = QPen(QColor(0, 0, 0, 40))
+        painter.setPen(scan_pen)
+        for y in range(0, self.height(), 4):
+            painter.drawLine(0, y, self.width(), y)
+
+
 class AvatarWidget(QFrame):
     """アバター表示エリア"""
     def __init__(self):
         super().__init__()
         self.setObjectName("avatarFrame")
         self.speaking = False
+        self._mouth_open = False
+        self._mouth_timer = QTimer(self)
+        self._mouth_timer.setInterval(120)
+        self._mouth_timer.timeout.connect(self._toggle_mouth)
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -183,54 +260,90 @@ class AvatarWidget(QFrame):
         
         # アバターエリア（将来的に画像を追加）
         self.avatar_area = QLabel()
-        self.avatar_area.setFixedSize(160, 160)
+        self.avatar_area.setFixedSize(180, 180)
         self.avatar_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.avatar_area.setStyleSheet("""
             background-color: #0d1a14;
-            border: 1px solid #00ff88;
+            border: 1px solid rgba(0, 230, 118, 0.6);
             border-radius: 4px;
-            color: #00ff88;
+            color: #00e676;
             font-size: 48px;
         """)
-        self.avatar_area.setText("◉")
+        self._idle_path = _find_asset("idle.png")
+        self._talk_path = _find_asset("talk.png")
+        self._idle_pixmap = QPixmap(str(self._idle_path)) if self._idle_path else None
+        self._talk_pixmap = QPixmap(str(self._talk_path)) if self._talk_path else None
+        if self._idle_pixmap:
+            self._set_avatar_pixmap(self._idle_pixmap)
+        else:
+            self.avatar_area.setText("◉")
         layout.addWidget(self.avatar_area, alignment=Qt.AlignmentFlag.AlignCenter)
         
         # 名前
         name_label = QLabel("SPECTRA")
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name_label.setStyleSheet("color: #00ff88; font-size: 14px; font-weight: bold;")
+        name_label.setStyleSheet("color: #00e676; font-size: 14px; font-weight: bold;")
         layout.addWidget(name_label)
         
         # ステータス
         self.status_label = QLabel("● ONLINE")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("color: #00aa55; font-size: 11px;")
+        self.status_label.setStyleSheet("color: rgba(0, 230, 118, 0.7); font-size: 11px;")
         layout.addWidget(self.status_label)
         
         layout.addStretch()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # リサイズ時に画像をフィット
+        if self._idle_pixmap and not self.speaking:
+            self._set_avatar_pixmap(self._idle_pixmap)
+        elif self._talk_pixmap and self.speaking:
+            self._set_avatar_pixmap(self._talk_pixmap)
+
+    def _set_avatar_pixmap(self, pixmap: QPixmap):
+        scaled = pixmap.scaled(
+            self.avatar_area.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.avatar_area.setPixmap(scaled)
+
+    def _toggle_mouth(self):
+        if not self.speaking or not self._idle_pixmap or not self._talk_pixmap:
+            return
+        self._mouth_open = not self._mouth_open
+        self._set_avatar_pixmap(self._talk_pixmap if self._mouth_open else self._idle_pixmap)
 
     def set_speaking(self, speaking: bool):
         self.speaking = speaking
         if speaking:
             self.status_label.setText("◉ SPEAKING...")
-            self.status_label.setStyleSheet("color: #00ff88; font-size: 11px;")
+            self.status_label.setStyleSheet("color: #00e676; font-size: 11px;")
             self.avatar_area.setStyleSheet("""
                 background-color: #0d1a14;
-                border: 2px solid #00ff88;
+                border: 2px solid rgba(0, 230, 118, 0.9);
                 border-radius: 4px;
-                color: #00ff88;
+                color: #00e676;
                 font-size: 48px;
             """)
+            if self._talk_pixmap:
+                self._mouth_open = True
+                self._set_avatar_pixmap(self._talk_pixmap)
+                self._mouth_timer.start()
         else:
             self.status_label.setText("● ONLINE")
-            self.status_label.setStyleSheet("color: #00aa55; font-size: 11px;")
+            self.status_label.setStyleSheet("color: rgba(0, 230, 118, 0.7); font-size: 11px;")
             self.avatar_area.setStyleSheet("""
                 background-color: #0d1a14;
-                border: 1px solid #00ff88;
+                border: 1px solid rgba(0, 230, 118, 0.6);
                 border-radius: 4px;
-                color: #00ff88;
+                color: #00e676;
                 font-size: 48px;
             """)
+            self._mouth_timer.stop()
+            if self._idle_pixmap:
+                self._set_avatar_pixmap(self._idle_pixmap)
 
 
 class MainWindow(QMainWindow):
@@ -249,7 +362,7 @@ class MainWindow(QMainWindow):
         self._append_system("AI Chat Ready")
 
     def _setup_ui(self):
-        central = QWidget()
+        central = CommandSurface()
         self.setCentralWidget(central)
         
         main_layout = QVBoxLayout(central)
@@ -284,7 +397,7 @@ class MainWindow(QMainWindow):
         
         # ターミナル出力ラベル
         terminal_label = QLabel("TERMINAL OUTPUT")
-        terminal_label.setStyleSheet("color: #00aa55; font-size: 10px; letter-spacing: 2px;")
+        terminal_label.setStyleSheet("color: rgba(0, 230, 118, 0.7); font-size: 10px;")
         chat_container.addWidget(terminal_label)
         
         # チャット表示
@@ -327,20 +440,20 @@ class MainWindow(QMainWindow):
 
     def _append_system(self, text: str):
         self.chat_display.append(
-            f'<p style="color: #00aa55; margin: 4px 0;">'
-            f'<span style="color: #006633;">&gt;</span> {text}</p>'
+            f'<p style="color: rgba(0, 230, 118, 0.7); margin: 4px 0;">'
+            f'<span style="color: rgba(0, 230, 118, 0.45);">&gt;</span> {text}</p>'
         )
 
     def _append_user(self, text: str):
         self.chat_display.append(
-            f'<p style="color: #00ffcc; margin: 8px 0 4px 0;">'
-            f'<span style="color: #00ff88; font-weight: bold;">USER&gt;</span> {text}</p>'
+            f'<p style="color: {USER_COLOR}; margin: 8px 0 4px 0;">'
+            f'<span style="color: {THEME_COLOR}; font-weight: bold;">USER&gt;</span> {text}</p>'
         )
 
     def _append_spectra(self, text: str):
         self.chat_display.append(
-            f'<p style="color: #ffffff; margin: 4px 0 8px 0;">'
-            f'<span style="color: #00ff88; font-weight: bold;">Spectra&gt;</span> {text}</p>'
+            f'<p style="color: #e9fff3; margin: 4px 0 8px 0;">'
+            f'<span style="color: {THEME_COLOR}; font-weight: bold;">Spectra&gt;</span> {text}</p>'
         )
 
     def _append_error(self, text: str):
@@ -385,8 +498,9 @@ def main():
     app = QApplication(sys.argv)
     
     # 日本語フォントを明示的に設定
+    installed = _install_fonts()
     font = QFont()
-    font.setFamilies(["Cascadia Code", "JetBrains Mono", "Consolas", "Meiryo", "Yu Gothic UI", "Noto Sans CJK JP"])
+    font.setFamilies(installed + FONT_FALLBACKS + MONO_FALLBACKS)
     font.setPointSize(11)
     app.setFont(font)
     
