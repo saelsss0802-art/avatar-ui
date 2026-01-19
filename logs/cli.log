@@ -21,3 +21,6 @@ drwxr-xr-x 1 ukiin 197609     0  1月 19 13:19 scripts[?2004h
 bash-5.2$
 $ ls -R
 $ ls -l
+$ ls
+$ ls -la
+$ ls

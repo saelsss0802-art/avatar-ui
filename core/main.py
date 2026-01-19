@@ -131,6 +131,12 @@ class AdminConfigUpdate(BaseModel):
     system_prompt: Optional[str] = None
 
 
+class ObservationRequest(BaseModel):
+    # CLIなどの観測結果をセッションに追加する。
+    session_id: str
+    content: str
+
+
 def think_core(prompt: str, session_id: str) -> dict:
     """
     コア推論関数（内部用）。
@@ -285,6 +291,17 @@ def admin_config_update(payload: AdminConfigUpdate, request: Request):
         "temperature": CONFIG["temperature"],
         "system_prompt": CONFIG["system_prompt"],
     }
+
+
+@app.post("/admin/observation")
+def admin_observation(payload: ObservationRequest, request: Request):
+    # CLI実行結果などをセッションに追加する。
+    _check_api_key(request)
+    if not payload.content.strip():
+        raise HTTPException(status_code=400, detail="content is empty")
+    chat = _sessions.get_chat(payload.session_id)
+    chat.append(system(f"CLI_RESULT:\n{payload.content}"))
+    return {"status": "ok"}
 
 
 # --- Robloxチャネルをルーターとして統合 ---

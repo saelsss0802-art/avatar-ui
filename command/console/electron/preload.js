@@ -102,6 +102,25 @@ const updateAdminConfig = async (payload) => {
   return data;
 };
 
+// Core にCLI結果を渡す。
+const sendObservation = async (payload) => {
+  const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
+  const response = await fetch(`${baseUrl}/admin/observation`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data?.detail ?? response.statusText;
+    throw new Error(message);
+  }
+  return data;
+};
+
 // レンダラに必要最小限のAPIだけ公開する。
 contextBridge.exposeInMainWorld('spectraApi', {
   think,
@@ -109,6 +128,7 @@ contextBridge.exposeInMainWorld('spectraApi', {
   getConsoleConfig,
   getAdminConfig,
   updateAdminConfig,
+  sendObservation,
 });
 
 // 端末操作をレンダラに公開する。

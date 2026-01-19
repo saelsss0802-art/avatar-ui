@@ -86,6 +86,20 @@ body {
   font-family: Consolas, Menlo, monospace;
 }
 
+/* スクロールバーを統一する（chat/cli両方に適用）。 */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.4);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.6);
+}
+
 /* 画面を3分割するグリッドレイアウト。 */
 .app {
   display: grid;
@@ -164,7 +178,8 @@ body {
 .terminal-host {
   flex: 1;
   min-height: 0;
-  padding: 8px;
+  padding: 0;
+  padding-left: 16px;
   box-sizing: border-box;
 }
 
@@ -173,7 +188,21 @@ body {
 }
 
 .terminal-host .xterm-viewport {
-  overflow-y: auto;
+  overflow-y: auto !important;
+}
+
+/* xtermのスクロールバーもchatと同じスタイルに統一する。 */
+.terminal-host .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.4);
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), 0.6);
 }
 
  
@@ -190,6 +219,7 @@ body {
   color: var(--col-theme-text);
   min-height: 0;
 }
+
 
 .text-line { margin: 0 0 8px; }
 .text-line strong {

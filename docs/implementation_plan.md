@@ -184,6 +184,8 @@ spectra/
 ### Phase 1.5: Command（指令室）最小実装（後送り）
 - [ ] Console: Electron + xterm.js で基本画面
 - [ ] Console: Core API との通信（/v1/think）
+- [ ] Console: 統制エージェント機構（承認/実行/観測の責務分離）
+  - 問題: CLI実行結果がCoreに届かず、メタ認知がズレる
 - [ ] Discord: 承認/拒否 + 対話の最小フロー（予定）
 
 ### Phase 2: Coreの最小骨格

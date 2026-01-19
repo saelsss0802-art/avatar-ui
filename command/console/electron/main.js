@@ -64,9 +64,10 @@ const createTerminal = (webContents, cols, rows) => {
     cwd: shellCwd,
     env: process.env,
   });
-  terminal.onData((data) => {
+  const dataSubscription = terminal.onData((data) => {
     webContents.send('terminal:data', data);
   });
+  terminal._spectraDataSubscription = dataSubscription;
   terminals.set(webContents.id, terminal);
 };
 
@@ -75,6 +76,10 @@ const disposeTerminal = (webContentsId) => {
   const terminal = terminals.get(webContentsId);
   if (!terminal) {
     return;
+  }
+  if (terminal._spectraDataSubscription) {
+    terminal._spectraDataSubscription.dispose();
+    delete terminal._spectraDataSubscription;
   }
   terminal.kill();
   terminals.delete(webContentsId);

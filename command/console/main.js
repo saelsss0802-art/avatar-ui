@@ -93,6 +93,15 @@ const requireAdminApi = () => {
   return api;
 };
 
+// 観測APIが無ければ即停止する。
+const requireObservationApi = () => {
+  const api = requireSpectraApi();
+  if (!api.sendObservation) {
+    failFast('Observation API is not available');
+  }
+  return api;
+};
+
 // 取得したConsole設定をCSS変数と表示に反映する。
 const applyConsoleConfig = (data) => {
   if (!data) {
@@ -273,16 +282,25 @@ const setupTerminal = () => {
     });
   };
 
-  // 提案されたCLI操作を実行し、結果をチャットに返す。
+  // 提案されたCLI操作を実行し、結果をコアに渡す。
   window.runCliCommand = (command, label) => {
     addLine('text-line--system', `> run ${label}`);
     const logger = requireLogger();
+    const observationApi = requireObservationApi();
     logger.cli(`$ ${command}`);
     runCommand(command)
       .then((result) => {
         if (!result.buffer.trim()) {
           return;
         }
+        const cleaned = stripAnsi(result.buffer).trimEnd();
+        const suffix = result.truncated ? '\n... (truncated)' : '';
+        observationApi.sendObservation({
+          session_id: sessionId,
+          content: cleaned + suffix,
+        }).catch((error) => {
+          failFast(error instanceof Error ? error.message : String(error));
+        });
       })
       .catch((error) => {
         failFast(error instanceof Error ? error.message : String(error));
