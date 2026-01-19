@@ -1,3 +1,4 @@
+/* テーマカラーと見た目の基準値をまとめる。 */
 :root {
   color-scheme: dark;
   font-family: Consolas, Menlo, monospace;
@@ -53,6 +54,7 @@
     0 0 8px rgba(var(--theme-color-r), var(--theme-color-g), var(--theme-color-b), var(--glow-box-alpha2));
 }
 
+/* 走査線風のオーバーレイで雰囲気を作る。 */
 .app::after {
   content: "";
   position: absolute;
@@ -72,6 +74,7 @@
   opacity: 0.7;
 }
 
+/* 画面全体の基本設定。 */
 html,
 body {
   height: 100%;
@@ -83,6 +86,7 @@ body {
   font-family: Consolas, Menlo, monospace;
 }
 
+/* 画面を3分割するグリッドレイアウト。 */
 .app {
   display: grid;
   background: rgba(0, 0, 0, var(--ui-opacity));
@@ -100,6 +104,7 @@ body {
   overflow: hidden;
 }
 
+/* 上部のラインでコマンド端末風に見せる。 */
 .app::before {
   content: "";
   position: absolute;
@@ -111,11 +116,13 @@ body {
   box-shadow: var(--glow-text);
 }
 
+/* タイトルバー無しでもドラッグできるようにする。 */
 .app { -webkit-app-region: drag; }
 #pane-output, #pane-input, #pane-avatar, .meta-bar, input, .text-scroll { -webkit-app-region: no-drag; }
 
 .app:not(.split) #pane-avatar { display: none; }
 
+/* 会話ログの表示枠。 */
 #pane-output {
   grid-column: 1 / 2;
   grid-row: 1 / 2;
@@ -136,6 +143,7 @@ body {
   overflow: hidden;
 }
 
+/* ログ本文のスクロール領域。 */
 .text-scroll {
   flex: 1;
   padding: 16px;
@@ -191,6 +199,7 @@ body {
   font-style: italic;
 }
 
+/* 入力エリア。 */
 #pane-input {
   grid-column: 1 / 3;
   grid-row: 2 / 3;
@@ -213,6 +222,7 @@ body {
   outline: none;
 }
 
+/* アバター表示枠。 */
 #pane-avatar {
   grid-column: 2 / 3;
   grid-row: 1 / 2;
@@ -261,6 +271,7 @@ body {
   letter-spacing: 1px;
 }
 
+/* 右下のステータス表示。 */
 .meta-bar {
   grid-column: 1 / 3;
   grid-row: 3 / 4;
@@ -271,6 +282,7 @@ body {
   margin-top: -6px;
 }
 
+/* ツール呼び出し表示（将来拡張用）。 */
 .tool-call { margin: 4px 0; }
 .tool-call summary { cursor: pointer; color: var(--col-tool-text); list-style: none; }
 .tool-call summary::before { content: "> "; }

@@ -11,7 +11,9 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <!-- 画面全体をまとめるコンテナ -->
     <main class="app split">
+      <!-- 会話ログの表示領域 -->
       <section data-slot="output" id="pane-output">
         <div class="surface-host" id="surface-host">
           <div class="surface surface--text">
@@ -20,11 +22,13 @@
         </div>
       </section>
 
+      <!-- 入力欄 -->
       <footer data-slot="input" id="pane-input">
         <span class="prompt">&gt;</span>
         <input type="text" id="input" autofocus />
       </footer>
 
+      <!-- アバター表示 -->
       <aside data-slot="avatar" id="pane-avatar">
         <div id="avatar-wrap">
           <img
@@ -38,7 +42,8 @@
         <div id="avatar-label" class="avatar-label">SPECTRA</div>
       </aside>
 
-      <div class="meta-bar" id="meta">spectra-command</div>
+      <!-- 状態/モードの表示 -->
+      <div class="meta-bar" id="meta"></div>
     </main>
 
     <script src="./main.js"></script>

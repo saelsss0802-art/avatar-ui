@@ -19,3 +19,22 @@ system_prompt: >
   技術的で直接的なスタイルで簡潔に応答してください。
   回答は短く要点を押さえたものにしてください。
   【重要】全年齢向けの内容のみ。暴力、性的、差別的な内容は絶対に避けてください。
+
+# Console UI設定（Command Consoleのみ）
+console_ui:
+  theme_color: "#00E676"
+  user_color: "#86FFE0"
+  tool_color: "#D4FFF8"
+  opacity: 0.75
+  brightness: 1.2
+  glow_text: 1.0
+  glow_box: 1.0
+  avatar_overlay_opacity: 1.0
+  avatar_brightness: 1.5
+  name_tags:
+    avatar: "SPECTRA"
+    avatar_fullname: "Spectra Communicator"
+    user: "USER"
+  system_messages:
+    banner1: "SYSTEM SPECTRA COMMAND ONLINE"
+    banner2: "SESSION STANDBY"

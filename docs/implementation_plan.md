@@ -169,7 +169,19 @@ spectra/
 - [x] `channels/roblox/` 動作確認
 - [x] Core + Roblox の統合確認
 
-### Phase 1: Command（指令室）最小実装
+### Phase 1: Command（指令室）最小化（avatar-uiの良い部分を採用）
+- [ ] Console UI設定の正本を `config.yaml` に統一（色・透過・グロー・システム文言）
+- [ ] Consoleのメタラベルは `avatar-ui v0.2.0` を表示（`command/console/package.json` の name/version を使用）
+- [ ] メタラベルは UI設定から変更不可（開発者のみ変更可能にする）
+- [ ] Consoleの起動は fail-fast（設定取得失敗時は即停止、フォールバックを置かない）
+- [ ] Consoleの設定値が欠落/不正なら fail-fast（UI表示を続行しない）
+- [ ] `core.main` に `/console-config` を追加し、Console向け最小設定を返す
+- [ ] `command/console/electron/preload.js` に `getConsoleConfig` を追加（/console-config を取得）
+- [ ] `command/console/main.js` で「起動→設定取得→UI反映」の順に初期化フローを固定
+- [ ] UIの文字列や色は CSS 変数で反映（JSでの分岐を最小化）
+- [ ] 既存の Console UI のハードコード文字列を削減し、設定由来に寄せる
+
+### Phase 1.5: Command（指令室）最小実装（後送り）
 - [ ] Console: Electron + xterm.js で基本画面
 - [ ] Console: Core API との通信（/v1/think）
 - [ ] Discord: 承認/拒否 + 対話の最小フロー（予定）

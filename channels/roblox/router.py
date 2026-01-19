@@ -22,6 +22,11 @@ CORS_HEADERS = {
     "Access-Control-Allow-Headers": "Content-Type, X-API-Key",
 }
 
+# 共有APIキーは必須。未設定なら起動時に止める。
+_SPECTRA_API_KEY = os.getenv("SPECTRA_API_KEY")
+if not _SPECTRA_API_KEY:
+    raise RuntimeError("SPECTRA_API_KEY is not set")
+
 
 class RobloxRequest(BaseModel):
     # 旧Workers互換: promptとprevious_response_idを受け取る。
@@ -75,12 +80,9 @@ router = APIRouter(tags=["roblox"])
 
 
 def _check_api_key(request: Request) -> None:
-    """APIキー認証。SPECTRA_API_KEYが設定されていれば検証する。"""
-    required = os.getenv("SPECTRA_API_KEY")
-    if not required:
-        return
+    """APIキー認証。共有APIキーは必須。"""
     provided = request.headers.get("x-api-key")
-    if provided != required:
+    if provided != _SPECTRA_API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -106,7 +108,10 @@ def roblox(payload: RobloxRequest, request: Request):
     # APIキー認証
     _check_api_key(request)
 
-    prompt = payload.prompt or "Hello"
+    # promptは必須。無ければ即エラーにする。
+    if not payload.prompt or not payload.prompt.strip():
+        raise HTTPException(status_code=400, detail="prompt is required")
+    prompt = payload.prompt.strip()
 
     # previous_response_idがあれば、それに対応するsession_idを使う。
     session_id = _sessions.resolve(payload.previous_response_id)
@@ -117,12 +122,14 @@ def roblox(payload: RobloxRequest, request: Request):
     try:
         core_result = think_core(prompt, session_id)
     except Exception as exc:
-        return _reply(False, error=str(exc))
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     text = core_result.get("response", "")
 
     # 旧Workersのように新しいresponse_idを返す。
-    response_id = core_result.get("response_id") or f"resp-{uuid.uuid4().hex}"
+    response_id = core_result.get("response_id")
+    if not response_id:
+        raise HTTPException(status_code=502, detail="response_id is missing")
     _sessions.bind(response_id, session_id)
 
     return _reply(True, text=text, response_id=response_id)

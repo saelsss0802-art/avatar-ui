@@ -27,7 +27,15 @@ CONFIG_PATH = os.getenv("SPECTRA_CONFIG", "config.yaml")
 def _load_config() -> dict:
     # モデル名や人格などの「正本」を読む。
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    # 設定が空や不正な型なら起動を止める。
+    if not isinstance(config, dict):
+        raise RuntimeError("config must be a mapping")
+    # コアに必須のキーは起動時に検証しておく。
+    for key in ("model", "system_prompt"):
+        if key not in config:
+            raise RuntimeError(f"{key} is missing in config")
+    return config
 
 
 CONFIG = _load_config()
@@ -36,6 +44,11 @@ CONFIG = _load_config()
 _XAI_API_KEY = os.getenv("XAI_API_KEY")
 if not _XAI_API_KEY:
     raise RuntimeError("XAI_API_KEY is not set")
+
+# 共有APIキーは必須。未設定なら起動時に止める。
+_SPECTRA_API_KEY = os.getenv("SPECTRA_API_KEY")
+if not _SPECTRA_API_KEY:
+    raise RuntimeError("SPECTRA_API_KEY is not set")
 
 # リクエスト間で共有するSDKクライアント（初期化コストを節約）。
 _client = Client(api_key=_XAI_API_KEY)
@@ -100,8 +113,13 @@ def think_core(prompt: str, session_id: str) -> dict:
     chat.append(user(prompt))
     response = chat.sample()
 
-    text = getattr(response, "content", str(response))
+    # 応答本文とレスポンスIDは必須。欠落時は即エラーにする。
+    text = getattr(response, "content", None)
     response_id = getattr(response, "id", None)
+    if not text:
+        raise RuntimeError("Core response content is missing")
+    if not response_id:
+        raise RuntimeError("Core response_id is missing")
 
     return {
         "response": text,
@@ -115,12 +133,9 @@ app = FastAPI()
 
 
 def _check_api_key(request: Request) -> None:
-    # 共有APIキーがあれば検証する。未設定なら認証なしで通す。
-    required = os.getenv("SPECTRA_API_KEY")
-    if not required:
-        return
+    # 共有APIキーは必須なので一致しない場合は即拒否する。
     provided = request.headers.get("x-api-key")
-    if provided != required:
+    if provided != _SPECTRA_API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -129,11 +144,7 @@ def think(payload: ThinkRequest, request: Request):
     # コア推論エンドポイント（外部API用）。
     _check_api_key(request)
 
-    try:
-        result = think_core(payload.prompt, payload.session_id)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
+    result = think_core(payload.prompt, payload.session_id)
     return JSONResponse(result)
 
 
@@ -141,6 +152,15 @@ def think(payload: ThinkRequest, request: Request):
 def health():
     # 死活監視用のシンプルな応答。
     return {"status": "ok"}
+
+
+@app.get("/console-config")
+def console_config(request: Request):
+    # Console UI向けの最小設定を返す。
+    _check_api_key(request)
+    if "console_ui" not in CONFIG:
+        raise HTTPException(status_code=500, detail="console_ui is missing")
+    return {"console_ui": CONFIG["console_ui"]}
 
 
 # --- Robloxチャネルをルーターとして統合 ---

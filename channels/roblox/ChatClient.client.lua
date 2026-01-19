@@ -14,21 +14,18 @@ local bubbleEvent = ReplicatedStorage:WaitForChild("SpectraBubbleEvent", 10)
 -- SPECTRAキャラを取得
 local spectraCharacter = workspace:WaitForChild("SpectraCommunicator", 10)
 
-if not chatFunction then
-	warn("GrokChatFunction not found!")
-	return
-end
+-- 必須オブジェクトが無ければ即エラーにする。
+assert(chatFunction, "GrokChatFunction not found")
+assert(bubbleEvent, "SpectraBubbleEvent not found")
+assert(spectraCharacter, "SpectraCommunicator not found")
 
 -- バブル表示を受信したとき
-if bubbleEvent and spectraCharacter then
-	bubbleEvent.OnClientEvent:Connect(function(response)
-		-- SPECTRAの頭上にバブル表示（旧式Chat:Chatを使用）
-		local head = spectraCharacter:FindFirstChild("Head")
-		if head then
-			Chat:Chat(head, response, Enum.ChatColor.Blue)
-		end
-	end)
-end
+bubbleEvent.OnClientEvent:Connect(function(response)
+	-- SPECTRAの頭上にバブル表示（旧式Chat:Chatを使用）
+	local head = spectraCharacter:FindFirstChild("Head")
+	assert(head, "SpectraCommunicator.Head not found")
+	Chat:Chat(head, response, Enum.ChatColor.Blue)
+end)
 
 -- TextChatServiceのメッセージを監視
 TextChatService.MessageReceived:Connect(function(textChatMessage)
@@ -47,9 +44,8 @@ TextChatService.MessageReceived:Connect(function(textChatMessage)
 
 			-- チャット欄に表示
 			local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-			if channel then
-				channel:DisplaySystemMessage("[SPECTRA] " .. response)
-			end
+			assert(channel, "RBXGeneral channel not found")
+			channel:DisplaySystemMessage("[SPECTRA] " .. response)
 		end
 	end
 end)

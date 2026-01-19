@@ -9,6 +9,11 @@ local TextService = game:GetService("TextService")
 local PROXY_URL = "https://spectra.siqi.jp/roblox"
 local API_KEY = "YOUR_SPECTRA_API_KEY_HERE"  -- .envのSPECTRA_API_KEYと同じ値を設定
 
+-- APIキーが未設定なら早期に止める。
+if API_KEY == "YOUR_SPECTRA_API_KEY_HERE" then
+	error("SPECTRA API key is not configured")
+end
+
 -- サーバー全体で1つの会話履歴
 local serverResponseId = nil
 
@@ -17,11 +22,11 @@ local function filterText(text, playerId)
 	local success, result = pcall(function()
 		return TextService:FilterStringAsync(text, playerId)
 	end)
-	if success then
-		local filtered = result:GetNonChatStringForBroadcastAsync()
-		return filtered
+	if not success then
+		error("Text filter failed: " .. tostring(result))
 	end
-	return "[フィルタエラー]"
+	-- フィルタ処理に成功したら、その結果を返す。
+	return result:GetNonChatStringForBroadcastAsync()
 end
 
 -- Grok APIを呼び出す関数
@@ -48,17 +53,29 @@ local function askGrok(playerName, prompt)
 		})
 	end)
 
-	if success and response.Success then
-		local data = HttpService:JSONDecode(response.Body)
-		if data.success then
-			serverResponseId = data.response_id
-			return data.text
-		else
-			return "エラー: " .. tostring(data.error)
-		end
-	else
-		return "通信エラーが発生しました"
+	if not success then
+		error("HTTP request failed: " .. tostring(response))
 	end
+	if not response.Success then
+		error("HTTP error: " .. tostring(response.StatusCode) .. " " .. tostring(response.StatusMessage))
+	end
+
+	local decodeOk, data = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+	if not decodeOk then
+		error("Invalid JSON response: " .. tostring(data))
+	end
+	if not data.success then
+		error("API error: " .. tostring(data.error))
+	end
+	if not data.response_id then
+		error("response_id is missing")
+	end
+
+	-- 成功時のみresponse_idを更新して返す。
+	serverResponseId = data.response_id
+	return data.text
 end
 
 -- RemoteEvent（チャットバブル表示用）
