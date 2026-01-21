@@ -14,13 +14,33 @@
   <body>
     <!-- 画面全体をまとめるコンテナ -->
     <main class="app split">
-      <!-- 会話ログの表示領域 -->
+      <!-- 左側ペイン群の表示領域 -->
       <section data-slot="output" id="pane-output">
         <div class="surface-host" id="surface-host">
+          <!-- 計画ペイン -->
+          <div class="surface surface--plan" id="plan-surface">
+            <div class="plan-header">
+              <span class="plan-header-line"></span>
+              <span class="plan-title">PLAN</span>
+              <span class="plan-header-line"></span>
+            </div>
+            <div class="plan-content" id="plan-content">
+              <div class="plan-section plan-purpose" id="plan-purpose">Purpose: (none)</div>
+              <div class="plan-section plan-summary" id="plan-summary">
+                <span class="plan-summary-toggle">▼</span>
+                <span class="plan-summary-icon">≡</span>
+                <span class="plan-summary-label">Goals:</span>
+                <span class="plan-summary-bar"><span class="plan-summary-bar-fill" id="plan-bar-fill"></span></span>
+                <span class="plan-summary-rate" id="plan-summary-rate">[0/0, 0%]</span>
+              </div>
+              <div class="plan-goals" id="plan-goals"></div>
+            </div>
+          </div>
+          <!-- チャットペイン -->
           <div class="surface surface--text">
             <div class="text-scroll" id="output"></div>
           </div>
-          <!-- 端末表示用の領域 -->
+          <!-- 端末ペイン -->
           <div class="surface surface--terminal" id="terminal-surface">
             <div class="terminal-host" id="terminal-host"></div>
           </div>
@@ -34,18 +54,97 @@
         <div class="command-palette is-hidden" id="command-palette"></div>
       </footer>
 
-      <!-- アバター表示 -->
-      <aside data-slot="avatar" id="pane-avatar">
-        <div id="avatar-wrap">
-          <img
-            id="avatar-img"
-            src="./assets/idle.png"
-            data-idle="./assets/idle.png"
-            data-talk="./assets/talk.png"
-            alt="avatar"
-          />
+      <!-- 右側パネル（アバター＋インスペクター） -->
+      <aside data-slot="avatar" id="pane-right">
+        <div id="pane-avatar">
+          <div id="avatar-wrap">
+            <img
+              id="avatar-img"
+              src="./assets/idle.png"
+              data-idle="./assets/idle.png"
+              data-talk="./assets/talk.png"
+              alt="avatar"
+            />
+          </div>
+          <div id="avatar-label" class="avatar-label">SPECTRA</div>
         </div>
-        <div id="avatar-label" class="avatar-label">SPECTRA</div>
+        <!-- インスペクターペイン -->
+        <div class="surface surface--inspector" id="inspector-surface">
+          <div class="inspector-header">
+            <span class="inspector-header-line"></span>
+            <span class="inspector-title">INSPECTOR</span>
+            <span class="inspector-header-line"></span>
+          </div>
+          <div class="inspector-content" id="inspector-content">
+            <div class="inspector-flow">
+              <div class="inspector-item" data-step="judgment">
+                <span class="inspector-dot"></span>
+                <span class="inspector-line"></span>
+                <span class="inspector-label">JUDGMENT</span>
+                <span class="inspector-sep">|</span>
+                <span class="inspector-value" id="inspector-judgment">-</span>
+              </div>
+              <div class="inspector-item" data-step="intent">
+                <span class="inspector-dot"></span>
+                <span class="inspector-line"></span>
+                <span class="inspector-label">INTENT</span>
+                <span class="inspector-sep">|</span>
+                <span class="inspector-value" id="inspector-intent">-</span>
+              </div>
+              <div class="inspector-item" data-step="action">
+                <span class="inspector-dot"></span>
+                <span class="inspector-line"></span>
+                <span class="inspector-label">ACTION</span>
+                <span class="inspector-sep">|</span>
+                <span class="inspector-value" id="inspector-action">-</span>
+              </div>
+              <div class="inspector-item" data-step="result">
+                <span class="inspector-dot"></span>
+                <span class="inspector-label">RESULT</span>
+                <span class="inspector-sep">|</span>
+                <span class="inspector-value" id="inspector-result">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- バイタルペイン -->
+        <div class="surface surface--vitals" id="vitals-surface">
+          <div class="vitals-header">
+            <span class="vitals-header-line"></span>
+            <span class="vitals-title">VITALS</span>
+            <span class="vitals-header-line"></span>
+          </div>
+          <div class="vitals-content" id="vitals-content">
+            <div class="vitals-item">
+              <div class="vitals-row">
+                <span class="vitals-label">CPU</span>
+                <span class="vitals-value" id="vitals-cpu">--%</span>
+              </div>
+              <div class="vitals-bar"><span class="vitals-bar-fill" id="vitals-cpu-bar"></span></div>
+            </div>
+            <div class="vitals-item">
+              <div class="vitals-row">
+                <span class="vitals-label">Memory</span>
+                <span class="vitals-value" id="vitals-memory">--GB</span>
+              </div>
+              <div class="vitals-bar"><span class="vitals-bar-fill" id="vitals-memory-bar"></span></div>
+            </div>
+            <div class="vitals-item">
+              <div class="vitals-row">
+                <span class="vitals-label">Network</span>
+                <span class="vitals-value" id="vitals-network">--Mbps</span>
+              </div>
+              <div class="vitals-bar"><span class="vitals-bar-fill" id="vitals-network-bar"></span></div>
+            </div>
+            <div class="vitals-item">
+              <div class="vitals-row">
+                <span class="vitals-label">API Usage</span>
+                <span class="vitals-value" id="vitals-api">--%</span>
+              </div>
+              <div class="vitals-bar"><span class="vitals-bar-fill" id="vitals-api-bar"></span></div>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <!-- 状態/モードの表示 -->

@@ -7,8 +7,22 @@ const avatarLabel = document.getElementById('avatar-label');
 const terminalSurface = document.getElementById('terminal-surface');
 const terminalHost = document.getElementById('terminal-host');
 const commandPaletteEl = document.getElementById('command-palette');
+const planPurposeEl = document.getElementById('plan-purpose');
+const planGoalsEl = document.getElementById('plan-goals');
+const inspectorJudgmentEl = document.getElementById('inspector-judgment');
+const inspectorIntentEl = document.getElementById('inspector-intent');
+const inspectorActionEl = document.getElementById('inspector-action');
+const inspectorResultEl = document.getElementById('inspector-result');
+const vitalsCpuEl = document.getElementById('vitals-cpu');
+const vitalsCpuBarEl = document.getElementById('vitals-cpu-bar');
+const vitalsMemoryEl = document.getElementById('vitals-memory');
+const vitalsMemoryBarEl = document.getElementById('vitals-memory-bar');
+const vitalsNetworkEl = document.getElementById('vitals-network');
+const vitalsNetworkBarEl = document.getElementById('vitals-network-bar');
+const vitalsApiEl = document.getElementById('vitals-api');
+const vitalsApiBarEl = document.getElementById('vitals-api-bar');
 
-if (!outputEl || !inputEl || !avatarImg || !metaBar || !avatarLabel || !terminalSurface || !terminalHost || !commandPaletteEl) {
+if (!outputEl || !inputEl || !avatarImg || !metaBar || !avatarLabel || !terminalSurface || !terminalHost || !commandPaletteEl || !planPurposeEl || !planGoalsEl) {
   throw new Error('UI elements missing');
 }
 
@@ -174,6 +188,241 @@ const loadConsoleConfig = async () => {
     throw new Error('getConsoleConfig is not available');
   }
   return api.getConsoleConfig();
+};
+
+// Planペインを更新する。
+const updatePlanPane = async () => {
+  const api = requireSpectraApi();
+  if (!api.getState) {
+    return;
+  }
+  try {
+    const state = await api.getState();
+    const plan = state?.plan || {};
+
+    // Purpose表示
+    const purpose = plan.purpose || '(none)';
+    planPurposeEl.textContent = `Purpose: ${purpose}`;
+
+    // Goals表示
+    const goals = plan.goals || [];
+    planGoalsEl.innerHTML = '';
+
+    // 全体進捗を計算
+    let totalDone = 0;
+    let totalTasks = 0;
+    goals.forEach((g) => {
+      const tasks = g.tasks || [];
+      totalTasks += tasks.length;
+      totalDone += tasks.filter((t) => t.status === 'done').length;
+    });
+    const totalRate = totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0;
+
+    // 全体進捗バーを更新
+    const barFill = document.getElementById('plan-bar-fill');
+    const summaryRate = document.getElementById('plan-summary-rate');
+    if (barFill) {
+      barFill.style.width = `${totalRate}%`;
+    }
+    if (summaryRate) {
+      summaryRate.textContent = `[${totalDone}/${totalTasks}, ${totalRate}%]`;
+    }
+
+    if (goals.length === 0) {
+      const noGoals = document.createElement('div');
+      noGoals.className = 'plan-goal';
+      noGoals.textContent = '(no goals)';
+      planGoalsEl.appendChild(noGoals);
+      return;
+    }
+
+    goals.forEach((goal) => {
+      const goalEl = document.createElement('div');
+      goalEl.className = 'plan-goal';
+
+      const tasks = goal.tasks || [];
+      const doneCount = tasks.filter((t) => t.status === 'done').length;
+      const totalCount = tasks.length;
+      const rate = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+
+      // Goal header
+      const header = document.createElement('div');
+      header.className = 'plan-goal-header';
+
+      const toggle = document.createElement('span');
+      toggle.className = 'plan-goal-toggle';
+      toggle.textContent = '▼';
+
+      const goalId = document.createElement('span');
+      goalId.className = 'plan-goal-id';
+      goalId.textContent = goal.id;
+
+      const goalName = document.createElement('span');
+      goalName.className = 'plan-goal-name';
+      goalName.textContent = goal.name;
+
+      const goalRate = document.createElement('span');
+      goalRate.className = 'plan-goal-rate';
+      goalRate.textContent = `[${doneCount}/${totalCount}, ${rate}%]`;
+
+      header.appendChild(toggle);
+      header.appendChild(goalId);
+      header.appendChild(goalName);
+      header.appendChild(goalRate);
+      goalEl.appendChild(header);
+
+      // Tasks
+      const tasksEl = document.createElement('div');
+      tasksEl.className = 'plan-tasks';
+
+      tasks.forEach((task) => {
+        const taskEl = document.createElement('div');
+        taskEl.className = 'plan-task';
+
+        const icon = document.createElement('span');
+        icon.className = `plan-task-icon plan-task-icon--${task.status}`;
+        if (task.status === 'done') {
+          icon.textContent = '✓';
+        } else if (task.status === 'active') {
+          icon.textContent = '●';
+        } else if (task.status === 'fail') {
+          icon.textContent = '✗';
+        } else {
+          icon.textContent = '○';
+        }
+
+        const taskId = document.createElement('span');
+        taskId.className = 'plan-task-id';
+        taskId.textContent = task.id;
+
+        const taskName = document.createElement('span');
+        taskName.className = 'plan-task-name';
+        taskName.textContent = task.name;
+
+        const taskStatus = document.createElement('span');
+        taskStatus.className = 'plan-task-status';
+        // active/pending はラベル表示、done/failは表示しない
+        if (task.status === 'active' || task.status === 'pending') {
+          taskStatus.textContent = `(${task.status})`;
+        }
+
+        taskEl.appendChild(icon);
+        taskEl.appendChild(taskId);
+        taskEl.appendChild(taskName);
+        taskEl.appendChild(taskStatus);
+        tasksEl.appendChild(taskEl);
+      });
+
+      goalEl.appendChild(tasksEl);
+
+      // Toggle click handler
+      header.addEventListener('click', () => {
+        const isCollapsed = tasksEl.classList.toggle('is-collapsed');
+        toggle.textContent = isCollapsed ? '▶' : '▼';
+      });
+
+      planGoalsEl.appendChild(goalEl);
+    });
+  } catch (error) {
+    console.error('Failed to update plan pane:', error);
+  }
+};
+
+// Inspectorペインを更新する。
+const updateInspectorPane = async () => {
+  const api = requireSpectraApi();
+  if (!api.getState) {
+    return;
+  }
+  try {
+    const state = await api.getState();
+    const thought = state?.thought || {};
+    const action = state?.action;
+    const result = state?.result;
+
+    // 各要素の値を更新
+    const judgment = thought.judgment || '-';
+    const intent = thought.intent || '-';
+
+    let actionText = '-';
+    if (action) {
+      actionText = action.phase ? `${action.phase} | ${action.summary || '-'}` : (action.summary || '-');
+    }
+
+    let resultText = '-';
+    if (result) {
+      resultText = result.status ? `${result.status} | ${result.summary || '-'}` : (result.summary || '-');
+    }
+
+    if (inspectorJudgmentEl) inspectorJudgmentEl.textContent = judgment;
+    if (inspectorIntentEl) inspectorIntentEl.textContent = intent;
+    if (inspectorActionEl) inspectorActionEl.textContent = actionText;
+    if (inspectorResultEl) inspectorResultEl.textContent = resultText;
+
+    // フローの進捗状態を更新
+    const items = document.querySelectorAll('.inspector-item');
+    items.forEach((item) => {
+      item.classList.remove('is-done', 'is-active');
+    });
+
+    // 進捗判定: thought → action → result の順
+    const hasThought = thought.judgment || thought.intent;
+    const hasAction = action && action.phase;
+    const hasResult = result && result.status;
+
+    const judgmentItem = document.querySelector('.inspector-item[data-step="judgment"]');
+    const intentItem = document.querySelector('.inspector-item[data-step="intent"]');
+    const actionItem = document.querySelector('.inspector-item[data-step="action"]');
+    const resultItem = document.querySelector('.inspector-item[data-step="result"]');
+
+    if (hasResult) {
+      // 全完了
+      judgmentItem?.classList.add('is-done');
+      intentItem?.classList.add('is-done');
+      actionItem?.classList.add('is-done');
+      resultItem?.classList.add('is-done');
+    } else if (hasAction) {
+      // 実行中
+      judgmentItem?.classList.add('is-done');
+      intentItem?.classList.add('is-done');
+      actionItem?.classList.add('is-active');
+    } else if (hasThought) {
+      // 思考完了、実行待ち
+      judgmentItem?.classList.add('is-done');
+      intentItem?.classList.add('is-active');
+    }
+  } catch (error) {
+    console.error('Failed to update inspector pane:', error);
+  }
+};
+
+// Vitalsペインを更新する（現在はモックデータ）。
+const updateVitalsPane = () => {
+  // TODO: 実際のシステム情報を取得する（Electron IPC経由）
+  // 現在はモックデータを表示
+  const mockData = {
+    cpu: { value: 23, unit: '%', max: 100 },
+    memory: { value: 4.2, unit: 'GB', max: 16 },
+    network: { value: 12, unit: 'Mbps', max: 100 },
+    api: { value: 34, unit: '%', max: 100 },
+  };
+
+  if (vitalsCpuEl && vitalsCpuBarEl) {
+    vitalsCpuEl.textContent = `${mockData.cpu.value}${mockData.cpu.unit}`;
+    vitalsCpuBarEl.style.width = `${(mockData.cpu.value / mockData.cpu.max) * 100}%`;
+  }
+  if (vitalsMemoryEl && vitalsMemoryBarEl) {
+    vitalsMemoryEl.textContent = `${mockData.memory.value}${mockData.memory.unit}`;
+    vitalsMemoryBarEl.style.width = `${(mockData.memory.value / mockData.memory.max) * 100}%`;
+  }
+  if (vitalsNetworkEl && vitalsNetworkBarEl) {
+    vitalsNetworkEl.textContent = `${mockData.network.value}${mockData.network.unit}`;
+    vitalsNetworkBarEl.style.width = `${(mockData.network.value / mockData.network.max) * 100}%`;
+  }
+  if (vitalsApiEl && vitalsApiBarEl) {
+    vitalsApiEl.textContent = `${mockData.api.value}${mockData.api.unit}`;
+    vitalsApiBarEl.style.width = `${(mockData.api.value / mockData.api.max) * 100}%`;
+  }
 };
 
 // 製品名とバージョンをUIに表示する。
@@ -446,6 +695,10 @@ try {
       applyConsoleConfig(data);
       inputEl.disabled = false;
       inputEl.focus();
+      // Planペイン・Inspectorペイン・Vitalsペインを初期化
+      updatePlanPane();
+      updateInspectorPane();
+      updateVitalsPane();
     })
     .catch((error) => {
       failFast(error instanceof Error ? error.message : String(error));
@@ -602,6 +855,9 @@ if (inputEl) {
           inputEl.focus();
         }
         isRunning = false;
+        // Planペイン・Inspectorペインを更新
+        updatePlanPane();
+        updateInspectorPane();
       });
   });
 

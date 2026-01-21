@@ -102,6 +102,22 @@ const updateAdminConfig = async (payload) => {
   return data;
 };
 
+// Core から現在の状態を取得する。
+const getState = async () => {
+  const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
+  const response = await fetch(`${baseUrl}/state`, {
+    headers: {
+      ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    },
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data?.detail ?? response.statusText;
+    throw new Error(message);
+  }
+  return data;
+};
+
 // Core にCLI結果を渡す。
 const sendObservation = async (payload) => {
   const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
@@ -128,6 +144,7 @@ contextBridge.exposeInMainWorld('spectraApi', {
   getConsoleConfig,
   getAdminConfig,
   updateAdminConfig,
+  getState,
   sendObservation,
 });
 
