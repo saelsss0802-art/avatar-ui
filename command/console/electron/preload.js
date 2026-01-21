@@ -118,7 +118,7 @@ const getState = async () => {
   return data;
 };
 
-// Core にCLI結果を渡す。
+// Core にターミナル結果を渡す。
 const sendObservation = async (payload) => {
   const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
   const response = await fetch(`${baseUrl}/admin/observation`, {

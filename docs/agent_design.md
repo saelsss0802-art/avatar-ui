@@ -34,13 +34,13 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 ↓                                            │
 [入力] → [計画] → [思考] → [行動] → [結果] ─┘
   ↓        ↓        ↓        ↓        ↓
-[状態: input | plan | thought | action | result]
+[状態: input | mission | thought | action | result]
                     ↓
               [Persistence]
           state.json + events.jsonl
                     ↓
                [Output]
-      pane = chat / cli / plan / inspector / vitals
+      pane = dialogue / terminal / mission / inspector / vitals
 ```
 
 - サイクルは自律的に回り続ける
@@ -61,7 +61,7 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 ### 構成
 
 - 単一LLMコア（複数エージェント化は不要）
-- 単一chatオブジェクト（sourceで文脈分離）
+- 単一conversationオブジェクト（sourceで文脈分離）
 
 ---
 
@@ -72,7 +72,7 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 | 要素 | 構造 | 更新者 |
 |------|------|--------|
 | input | source, authority, text | 入力イベント |
-| plan | purpose, goals[] | 思考 |
+| mission | purpose, goals[] | 思考 |
 | thought | judgment, intent | 思考 |
 | action | phase, summary | 行動 |
 | result | status, summary | 行動 |
@@ -84,11 +84,11 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 ```json
 {
   "input": {
-    "source": "chat | cli | discord | roblox | x",
+    "source": "dialogue | terminal | discord | roblox | x",
     "authority": "user | public",
     "text": "..."
   },
-  "plan": {
+  "mission": {
     "purpose": "...",
     "goals": [
       {"id": "G1", "name": "...", "status": "active", "tasks": [
@@ -115,7 +115,7 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 - 形式: JSON（2スペースインデント、UTF-8、BOMなし）
 - 読み込み: 起動時
 - 保存方式: 状態変化ごとに全上書き
-- plan.goals: active目標のみ（doneはevents.jsonlに記録）
+- mission.goals: active目標のみ（doneはevents.jsonlに記録）
 
 ### events.jsonl
 
@@ -134,7 +134,7 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 - `goal_done`: 目標完了（追加: goal, name, rate）
 
 ```json
-{"time":"2026-01-21T12:00:00Z","type":"input","source":"chat","text":"READMEを更新して"}
+{"time":"2026-01-21T12:00:00Z","type":"input","source":"dialogue","text":"READMEを更新して"}
 {"time":"2026-01-21T12:00:01Z","type":"thought","judgment":"README更新の要求","intent":"G1-T1を実行"}
 {"time":"2026-01-21T12:00:02Z","type":"action","summary":"README.mdを編集"}
 {"time":"2026-01-21T12:00:05Z","type":"result","status":"done","summary":"README.md更新完了"}
@@ -150,7 +150,7 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 
 | Grok記憶 | 仕組み | 役割 |
 |---------|--------|------|
-| 短期 | chatオブジェクト | LLMコンテキスト（思考時に参照） |
+| 短期 | conversationオブジェクト | LLMコンテキスト（思考時に参照） |
 | 中期 | response ID | セッション継続（補助） |
 | 長期 | xAI Collections | 不変事実の保管（必要時のみ） |
 
@@ -169,7 +169,7 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 
 ```json
 {
-  "source": "chat | cli | discord | roblox | x",
+  "source": "dialogue | terminal | discord | roblox | x",
   "authority": "user | public",
   "text": "..."
 }
@@ -179,29 +179,29 @@ Avatarは**自律行動が基本**であり、ユーザーは例外的に介入�
 
 | source | authority |
 |--------|-----------|
-| chat | user |
-| cli | user |
+| dialogue | user |
+| terminal | user |
 | discord | user |
 | roblox | public |
 | x | public |
 
 ### 出力
 
-UI系（chat, cli等）: 自然言語
+UI系（dialogue, terminal等）: 自然言語
 state用（state.json, events.jsonl）: JSON
 
 ```json
 {
-  "pane": "chat | cli | plan | inspector | vitals",
+  "pane": "dialogue | terminal | mission | inspector | vitals",
   "data": "..."
 }
 ```
 
 | pane | data の内容 | 取得元 |
 |------|-------------|--------|
-| chat | 文字列（自然言語） | リアルタイム |
-| cli | 文字列（自然言語） | リアルタイム |
-| plan | 目的/目標/タスク | state.json |
+| dialogue | 文字列（自然言語） | リアルタイム |
+| terminal | 文字列（自然言語） | リアルタイム |
+| mission | 目的/目標/タスク | state.json |
 | inspector | 思考・行動・結果 | state.json |
 | vitals | cpu/memory/network | リアルタイム |
 
@@ -300,7 +300,7 @@ state用（state.json, events.jsonl）: JSON
 目標完了:   [G1] DONE 目標名 / 80%
 ```
 
-### 計画ペイン
+### ミッションペイン
 
 | 項目 | 仕様 |
 |------|------|
@@ -320,9 +320,9 @@ state用（state.json, events.jsonl）: JSON
 |------|------|
 | Avatar | 自律的に行動するAIエージェント（config.yamlで名前を設定） |
 | ユーザー | Avatarを操作する人間（config.yamlで名前を設定） |
-| source | 入力元（chat, cli, discord, roblox, x, ...） |
+| source | 入力元（dialogue, terminal, discord, roblox, x, ...） |
 | authority | 権限（user, public）※sourceから自動導出 |
-| pane | 表示先ペイン（chat, cli, plan, inspector, vitals） |
+| pane | 表示先ペイン（dialogue, terminal, mission, inspector, vitals） |
 | purpose | 目的（最上位の方針） |
 | goal | 目標（目的を達成するためのマイルストーン） |
 | task | タスク（目標を達成するための具体的な作業） |
@@ -344,7 +344,7 @@ state用（state.json, events.jsonl）: JSON
 | 状態 | 挙動 |
 |------|------|
 | purposeあり | サイクル開始（計画→思考→行動→結果） |
-| purposeなし | Avatarがchatで問いかけ → ユーザーが入力 → サイクル開始 |
+| purposeなし | Avatarがdialogueで問いかけ → ユーザーが入力 → サイクル開始 |
 
 **注:** purpose設定も通常のサイクルで処理される（特別扱いなし）
 
@@ -388,7 +388,7 @@ grok:
   "judgment": "状況の判断結果",
   "intent": "次の1手",
   "action": {
-    "type": "chat | execute | approve_request",
+    "type": "dialogue | execute | approve_request",
     "summary": "実行概要",
     "detail": {...}
   }

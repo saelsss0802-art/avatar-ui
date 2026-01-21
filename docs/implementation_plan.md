@@ -105,8 +105,8 @@
  └── command/discord（予定 / 統制UI）
 
 [Electron Console]（手動起動・使うときだけ）
- ├── チャットUI
- ├── xterm.js（CLI内蔵）
+ ├── ダイアログUI
+ ├── xterm.js（ターミナル内蔵）
  └── ダッシュボード（予定）
 ```
 
@@ -141,7 +141,7 @@ spectra/
 ```
 ┌───────────────────────────┐
 │ Electron Console (TS)     │
-│ 手動起動 / チャット・CLI    │
+│ 手動起動 / ダイアログ・ターミナル │
 └───────────┬───────────────┘
             │ HTTP (localhost)
             ▼
@@ -207,12 +207,12 @@ spectra/
 - [x] テンプレート化（state.json内容の注入）
 
 #### 2.6 UI拡張
-- [ ] planペイン追加
-- [ ] inspectorペイン追加
-- [ ] vitalsペイン追加
-- [ ] config重複解消: `avatar`/`user` と `console_ui.name_tags` の統一
-  - 現状: Console UIは `console_ui.name_tags` を参照
-  - 目標: `avatar`/`user` を正本とし、Console UIがそれを参照
+- [x] missionペイン追加
+- [x] inspectorペイン追加
+- [x] vitalsペイン追加
+- [x] config重複解消: `avatar`/`user` と `console_ui.name_tags` の統一
+  - `/console-config`で`avatar`/`user`を`name_tags`に注入
+  - `config.yaml`から重複した`name_tags`を削除
 
 ### Phase 3: Coreの最小骨格
 - [ ] `core/brain.py` — LLM + Context の統合

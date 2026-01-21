@@ -17,31 +17,41 @@
       <!-- 左側ペイン群の表示領域 -->
       <section data-slot="output" id="pane-output">
         <div class="surface-host" id="surface-host">
-          <!-- 計画ペイン -->
-          <div class="surface surface--plan" id="plan-surface">
-            <div class="plan-header">
-              <span class="plan-header-line"></span>
-              <span class="plan-title">PLAN</span>
-              <span class="plan-header-line"></span>
+          <!-- ミッションペイン -->
+          <div class="surface surface--mission" id="mission-surface">
+            <div class="mission-header">
+              <span class="mission-header-line"></span>
+              <span class="mission-title">MISSION</span>
+              <span class="mission-header-line"></span>
             </div>
-            <div class="plan-content" id="plan-content">
-              <div class="plan-section plan-purpose" id="plan-purpose">Purpose: (none)</div>
-              <div class="plan-section plan-summary" id="plan-summary">
-                <span class="plan-summary-toggle">▼</span>
-                <span class="plan-summary-icon">≡</span>
-                <span class="plan-summary-label">Goals:</span>
-                <span class="plan-summary-bar"><span class="plan-summary-bar-fill" id="plan-bar-fill"></span></span>
-                <span class="plan-summary-rate" id="plan-summary-rate">[0/0, 0%]</span>
+            <div class="mission-content" id="mission-content">
+              <div class="mission-section mission-purpose" id="mission-purpose">Purpose: (none)</div>
+              <div class="mission-section mission-summary" id="mission-summary">
+                <span class="mission-summary-toggle">▼</span>
+                <span class="mission-summary-icon">≡</span>
+                <span class="mission-summary-label">Goals:</span>
+                <span class="mission-summary-bar"><span class="mission-summary-bar-fill" id="mission-bar-fill"></span></span>
+                <span class="mission-summary-rate" id="mission-summary-rate">[0/0, 0%]</span>
               </div>
-              <div class="plan-goals" id="plan-goals"></div>
+              <div class="mission-goals" id="mission-goals"></div>
             </div>
           </div>
-          <!-- チャットペイン -->
-          <div class="surface surface--text">
+          <!-- ダイアログペイン -->
+          <div class="surface surface--dialogue">
+            <div class="pane-header">
+              <span class="pane-header-line"></span>
+              <span class="pane-title">DIALOGUE</span>
+              <span class="pane-header-line"></span>
+            </div>
             <div class="text-scroll" id="output"></div>
           </div>
-          <!-- 端末ペイン -->
+          <!-- ターミナルペイン -->
           <div class="surface surface--terminal" id="terminal-surface">
+            <div class="pane-header">
+              <span class="pane-header-line"></span>
+              <span class="pane-title">TERMINAL</span>
+              <span class="pane-header-line"></span>
+            </div>
             <div class="terminal-host" id="terminal-host"></div>
           </div>
         </div>
@@ -78,31 +88,43 @@
           <div class="inspector-content" id="inspector-content">
             <div class="inspector-flow">
               <div class="inspector-item" data-step="judgment">
-                <span class="inspector-dot"></span>
-                <span class="inspector-line"></span>
-                <span class="inspector-label">JUDGMENT</span>
-                <span class="inspector-sep">|</span>
-                <span class="inspector-value" id="inspector-judgment">-</span>
+                <div class="inspector-dot-wrap">
+                  <span class="inspector-dot"></span>
+                  <span class="inspector-line"></span>
+                </div>
+                <div class="inspector-text">
+                  <span class="inspector-label">JUDGMENT</span>
+                  <span class="inspector-value" id="inspector-judgment">-</span>
+                </div>
               </div>
               <div class="inspector-item" data-step="intent">
-                <span class="inspector-dot"></span>
-                <span class="inspector-line"></span>
-                <span class="inspector-label">INTENT</span>
-                <span class="inspector-sep">|</span>
-                <span class="inspector-value" id="inspector-intent">-</span>
+                <div class="inspector-dot-wrap">
+                  <span class="inspector-dot"></span>
+                  <span class="inspector-line"></span>
+                </div>
+                <div class="inspector-text">
+                  <span class="inspector-label">INTENT</span>
+                  <span class="inspector-value" id="inspector-intent">-</span>
+                </div>
               </div>
               <div class="inspector-item" data-step="action">
-                <span class="inspector-dot"></span>
-                <span class="inspector-line"></span>
-                <span class="inspector-label">ACTION</span>
-                <span class="inspector-sep">|</span>
-                <span class="inspector-value" id="inspector-action">-</span>
+                <div class="inspector-dot-wrap">
+                  <span class="inspector-dot"></span>
+                  <span class="inspector-line"></span>
+                </div>
+                <div class="inspector-text">
+                  <span class="inspector-label">ACTION</span>
+                  <span class="inspector-value" id="inspector-action">-</span>
+                </div>
               </div>
               <div class="inspector-item" data-step="result">
-                <span class="inspector-dot"></span>
-                <span class="inspector-label">RESULT</span>
-                <span class="inspector-sep">|</span>
-                <span class="inspector-value" id="inspector-result">-</span>
+                <div class="inspector-dot-wrap">
+                  <span class="inspector-dot"></span>
+                </div>
+                <div class="inspector-text">
+                  <span class="inspector-label">RESULT</span>
+                  <span class="inspector-value" id="inspector-result">-</span>
+                </div>
               </div>
             </div>
           </div>

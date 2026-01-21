@@ -122,9 +122,9 @@ def _build_state_context() -> str:
     with _state_lock:
         state_copy = copy.deepcopy(STATE)
 
-    plan = state_copy.get("plan", {})
-    purpose = plan.get("purpose") or "（未設定）"
-    goals = plan.get("goals", [])
+    mission = state_copy.get("mission", {})
+    purpose = mission.get("purpose") or "（未設定）"
+    goals = mission.get("goals", [])
 
     goals_summary = ""
     if goals:
@@ -195,15 +195,15 @@ _sessions = _SessionStore()
 
 class ThinkRequest(BaseModel):
     # 新設計: source/text/session_id。authorityはsourceから自動導出。
-    source: str  # chat | cli | discord | roblox | x
+    source: str  # dialogue | terminal | discord | roblox | x
     text: str
     session_id: str
 
 
 # sourceからauthorityを導出するマッピング。
 _AUTHORITY_MAP = {
-    "chat": "user",
-    "cli": "user",
+    "dialogue": "user",
+    "terminal": "user",
     "discord": "user",
     "roblox": "public",
     "x": "public",
@@ -222,7 +222,7 @@ class AdminConfigUpdate(BaseModel):
 
 
 class ObservationRequest(BaseModel):
-    # CLIなどの観測結果をセッションに追加する。
+    # ターミナルなどの観測結果をセッションに追加する。
     session_id: str
     content: str
 
@@ -291,7 +291,7 @@ def _classify_intent(prompt: str, response_text: str) -> dict:
     classifier.append(
         system(
             "Return JSON only. Keys: intent (conversation|action), "
-            "route (chat|cli), proposal (object with command and summary or null). "
+            "route (dialogue|terminal), proposal (object with command and summary or null). "
             "If intent is action, proposal.command must be a concrete bash command."
         )
     )
@@ -311,7 +311,7 @@ def _classify_intent(prompt: str, response_text: str) -> dict:
         raise RuntimeError("Intent classification returned invalid JSON") from exc
     if data.get("intent") not in ("conversation", "action"):
         raise RuntimeError("Intent classification intent is invalid")
-    if data.get("route") not in ("chat", "cli"):
+    if data.get("route") not in ("dialogue", "terminal"):
         raise RuntimeError("Intent classification route is invalid")
     if "proposal" not in data:
         raise RuntimeError("Intent classification proposal is missing")
@@ -359,10 +359,17 @@ def health():
 @app.get("/console-config")
 def console_config(request: Request):
     # Console UI向けの最小設定を返す。
+    # avatar/user を正本とし、name_tags に注入する。
     _check_api_key(request)
     if "console_ui" not in CONFIG:
         raise HTTPException(status_code=500, detail="console_ui is missing")
-    return {"console_ui": CONFIG["console_ui"]}
+    ui = copy.deepcopy(CONFIG["console_ui"])
+    ui["name_tags"] = {
+        "avatar": CONFIG["avatar"]["name"],
+        "avatar_fullname": CONFIG["avatar"]["fullname"],
+        "user": CONFIG["user"]["name"],
+    }
+    return {"console_ui": ui}
 
 
 @app.get("/admin/config")
@@ -398,7 +405,7 @@ def set_purpose_endpoint(payload: PurposeRequest, request: Request):
     with _state_lock:
         set_purpose(STATE, payload.purpose.strip())
         save_state(STATE)
-    return {"purpose": STATE["plan"]["purpose"]}
+    return {"purpose": STATE["mission"]["purpose"]}
 
 
 class GoalRequest(BaseModel):
@@ -415,7 +422,7 @@ def add_goal_endpoint(payload: GoalRequest, request: Request):
     with _state_lock:
         add_goal(STATE, payload.goal_id.strip(), payload.name.strip())
         save_state(STATE)
-    return {"goals": STATE["plan"]["goals"]}
+    return {"goals": STATE["mission"]["goals"]}
 
 
 class TaskRequest(BaseModel):
@@ -433,7 +440,7 @@ def add_task_endpoint(payload: TaskRequest, request: Request):
     with _state_lock:
         add_task(STATE, payload.goal_id.strip(), payload.task_id.strip(), payload.name.strip())
         save_state(STATE)
-    return {"goals": STATE["plan"]["goals"]}
+    return {"goals": STATE["mission"]["goals"]}
 
 
 @app.post("/admin/approve")
@@ -502,12 +509,12 @@ def admin_config_update(payload: AdminConfigUpdate, request: Request):
 
 @app.post("/admin/observation")
 def admin_observation(payload: ObservationRequest, request: Request):
-    # CLI実行結果などをセッションに追加する。
+    # ターミナル実行結果などをセッションに追加する。
     _check_api_key(request)
     if not payload.content.strip():
         raise HTTPException(status_code=400, detail="content is empty")
     chat = _sessions.get_chat(payload.session_id)
-    chat.append(system(f"CLI_RESULT:\n{payload.content}"))
+    chat.append(system(f"TERMINAL_RESULT:\n{payload.content}"))
     return {"status": "ok"}
 
 

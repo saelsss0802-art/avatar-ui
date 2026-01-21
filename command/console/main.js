@@ -7,8 +7,8 @@ const avatarLabel = document.getElementById('avatar-label');
 const terminalSurface = document.getElementById('terminal-surface');
 const terminalHost = document.getElementById('terminal-host');
 const commandPaletteEl = document.getElementById('command-palette');
-const planPurposeEl = document.getElementById('plan-purpose');
-const planGoalsEl = document.getElementById('plan-goals');
+const missionPurposeEl = document.getElementById('mission-purpose');
+const missionGoalsEl = document.getElementById('mission-goals');
 const inspectorJudgmentEl = document.getElementById('inspector-judgment');
 const inspectorIntentEl = document.getElementById('inspector-intent');
 const inspectorActionEl = document.getElementById('inspector-action');
@@ -22,7 +22,7 @@ const vitalsNetworkBarEl = document.getElementById('vitals-network-bar');
 const vitalsApiEl = document.getElementById('vitals-api');
 const vitalsApiBarEl = document.getElementById('vitals-api-bar');
 
-if (!outputEl || !inputEl || !avatarImg || !metaBar || !avatarLabel || !terminalSurface || !terminalHost || !commandPaletteEl || !planPurposeEl || !planGoalsEl) {
+if (!outputEl || !inputEl || !avatarImg || !metaBar || !avatarLabel || !terminalSurface || !terminalHost || !commandPaletteEl || !missionPurposeEl || !missionGoalsEl) {
   throw new Error('UI elements missing');
 }
 
@@ -190,23 +190,23 @@ const loadConsoleConfig = async () => {
   return api.getConsoleConfig();
 };
 
-// Planペインを更新する。
-const updatePlanPane = async () => {
+// Missionペインを更新する。
+const updateMissionPane = async () => {
   const api = requireSpectraApi();
   if (!api.getState) {
     return;
   }
   try {
     const state = await api.getState();
-    const plan = state?.plan || {};
+    const mission = state?.mission || {};
 
     // Purpose表示
-    const purpose = plan.purpose || '(none)';
-    planPurposeEl.textContent = `Purpose: ${purpose}`;
+    const purpose = mission.purpose || '(none)';
+    missionPurposeEl.textContent = `Purpose: ${purpose}`;
 
     // Goals表示
-    const goals = plan.goals || [];
-    planGoalsEl.innerHTML = '';
+    const goals = mission.goals || [];
+    missionGoalsEl.innerHTML = '';
 
     // 全体進捗を計算
     let totalDone = 0;
@@ -219,8 +219,8 @@ const updatePlanPane = async () => {
     const totalRate = totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0;
 
     // 全体進捗バーを更新
-    const barFill = document.getElementById('plan-bar-fill');
-    const summaryRate = document.getElementById('plan-summary-rate');
+    const barFill = document.getElementById('mission-bar-fill');
+    const summaryRate = document.getElementById('mission-summary-rate');
     if (barFill) {
       barFill.style.width = `${totalRate}%`;
     }
@@ -230,15 +230,15 @@ const updatePlanPane = async () => {
 
     if (goals.length === 0) {
       const noGoals = document.createElement('div');
-      noGoals.className = 'plan-goal';
+      noGoals.className = 'mission-goal';
       noGoals.textContent = '(no goals)';
-      planGoalsEl.appendChild(noGoals);
+      missionGoalsEl.appendChild(noGoals);
       return;
     }
 
     goals.forEach((goal) => {
       const goalEl = document.createElement('div');
-      goalEl.className = 'plan-goal';
+      goalEl.className = 'mission-goal';
 
       const tasks = goal.tasks || [];
       const doneCount = tasks.filter((t) => t.status === 'done').length;
@@ -247,22 +247,22 @@ const updatePlanPane = async () => {
 
       // Goal header
       const header = document.createElement('div');
-      header.className = 'plan-goal-header';
+      header.className = 'mission-goal-header';
 
       const toggle = document.createElement('span');
-      toggle.className = 'plan-goal-toggle';
+      toggle.className = 'mission-goal-toggle';
       toggle.textContent = '▼';
 
       const goalId = document.createElement('span');
-      goalId.className = 'plan-goal-id';
+      goalId.className = 'mission-goal-id';
       goalId.textContent = goal.id;
 
       const goalName = document.createElement('span');
-      goalName.className = 'plan-goal-name';
+      goalName.className = 'mission-goal-name';
       goalName.textContent = goal.name;
 
       const goalRate = document.createElement('span');
-      goalRate.className = 'plan-goal-rate';
+      goalRate.className = 'mission-goal-rate';
       goalRate.textContent = `[${doneCount}/${totalCount}, ${rate}%]`;
 
       header.appendChild(toggle);
@@ -273,14 +273,14 @@ const updatePlanPane = async () => {
 
       // Tasks
       const tasksEl = document.createElement('div');
-      tasksEl.className = 'plan-tasks';
+      tasksEl.className = 'mission-tasks';
 
       tasks.forEach((task) => {
         const taskEl = document.createElement('div');
-        taskEl.className = 'plan-task';
+        taskEl.className = 'mission-task';
 
         const icon = document.createElement('span');
-        icon.className = `plan-task-icon plan-task-icon--${task.status}`;
+        icon.className = `mission-task-icon mission-task-icon--${task.status}`;
         if (task.status === 'done') {
           icon.textContent = '✓';
         } else if (task.status === 'active') {
@@ -292,15 +292,15 @@ const updatePlanPane = async () => {
         }
 
         const taskId = document.createElement('span');
-        taskId.className = 'plan-task-id';
+        taskId.className = 'mission-task-id';
         taskId.textContent = task.id;
 
         const taskName = document.createElement('span');
-        taskName.className = 'plan-task-name';
+        taskName.className = 'mission-task-name';
         taskName.textContent = task.name;
 
         const taskStatus = document.createElement('span');
-        taskStatus.className = 'plan-task-status';
+        taskStatus.className = 'mission-task-status';
         // active/pending はラベル表示、done/failは表示しない
         if (task.status === 'active' || task.status === 'pending') {
           taskStatus.textContent = `(${task.status})`;
@@ -321,10 +321,10 @@ const updatePlanPane = async () => {
         toggle.textContent = isCollapsed ? '▶' : '▼';
       });
 
-      planGoalsEl.appendChild(goalEl);
+      missionGoalsEl.appendChild(goalEl);
     });
   } catch (error) {
-    console.error('Failed to update plan pane:', error);
+    console.error('Failed to update mission pane:', error);
   }
 };
 
@@ -493,10 +493,10 @@ const setupTerminal = () => {
   // ANSIエスケープを除去して読みやすくする。
   const stripAnsi = (value) => value.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').replace(/\u001b\][^\u0007]*\u0007/g, '');
 
-  // CLI実行の出力を一定時間だけ集めて確認する。
+  // ターミナル実行の出力を一定時間だけ集めて確認する。
   const runCommand = (command) => {
     if (terminalCapture) {
-      failFast('CLI is busy');
+      failFast('Terminal is busy');
     }
     const maxBytes = 2000;
     const idleMs = 800;
@@ -517,8 +517,8 @@ const setupTerminal = () => {
     });
   };
 
-  // 提案されたCLI操作を実行し、結果をコアに渡す。
-  window.runCliCommand = (command, label) => {
+  // 提案されたターミナル操作を実行し、結果をコアに渡す。
+  window.runTerminalCommand = (command, label) => {
     addLine('text-line--system', `> run ${label}`);
     const observationApi = requireObservationApi();
     runCommand(command)
@@ -547,12 +547,12 @@ const loadAdminConfig = async () => {
   return api.getAdminConfig();
 };
 
-// CLI提案を実行する。
-const runCliProposal = (command, label) => {
-  if (!window.runCliCommand) {
-    failFast('CLI runner is not available');
+// ターミナル提案を実行する。
+const runTerminalProposal = (command, label) => {
+  if (!window.runTerminalCommand) {
+    failFast('Terminal runner is not available');
   }
-  window.runCliCommand(command, label);
+  window.runTerminalCommand(command, label);
 };
 
 // コマンド候補の表示を制御する。
@@ -616,8 +616,8 @@ const handleApprovalInput = () => {
     addLine('text-line--system', `> canceled ${action.label}`);
     return true;
   }
-  if (action.commandId === '__cli__') {
-    runCliProposal(action.value, action.label);
+  if (action.commandId === '__terminal__') {
+    runTerminalProposal(action.value, action.label);
     return true;
   }
   applyAdminUpdate(action.commandId, action.value)
@@ -695,8 +695,8 @@ try {
       applyConsoleConfig(data);
       inputEl.disabled = false;
       inputEl.focus();
-      // Planペイン・Inspectorペイン・Vitalsペインを初期化
-      updatePlanPane();
+      // Missionペイン・Inspectorペイン・Vitalsペインを初期化
+      updateMissionPane();
       updateInspectorPane();
       updateVitalsPane();
     })
@@ -833,14 +833,14 @@ if (inputEl) {
       failFast('Core API is unavailable.');
     }
 
-    api.think({ source: 'chat', text: value, sessionId })
+    api.think({ source: 'dialogue', text: value, sessionId })
       .then((data) => {
         if (!data?.response) {
           failFast('Core response is missing.');
         }
         if (data.intent === 'action' && data.proposal?.command) {
           const label = data.proposal.summary || data.proposal.command;
-          requestApproval('__cli__', data.proposal.command, label);
+          requestApproval('__terminal__', data.proposal.command, label);
           return;
         }
         addLine('text-line--assistant', `Avatar> ${data.response}`);
@@ -855,8 +855,8 @@ if (inputEl) {
           inputEl.focus();
         }
         isRunning = false;
-        // Planペイン・Inspectorペインを更新
-        updatePlanPane();
+        // Missionペイン・Inspectorペインを更新
+        updateMissionPane();
         updateInspectorPane();
       });
   });

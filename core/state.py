@@ -27,7 +27,7 @@ def _empty_state() -> dict:
     """空の状態を返す。"""
     return {
         "input": None,
-        "plan": {
+        "mission": {
             "purpose": None,
             "goals": [],
         },
@@ -131,12 +131,12 @@ def clear_result(state: dict) -> dict:
     return state
 
 
-# --- 計画操作 ---
+# --- ミッション操作 ---
 
 
 def set_purpose(state: dict, purpose: str) -> dict:
     """目的を設定する。"""
-    state["plan"]["purpose"] = purpose
+    state["mission"]["purpose"] = purpose
     return state
 
 
@@ -148,13 +148,13 @@ def add_goal(state: dict, goal_id: str, name: str, tasks: Optional[list] = None)
         "status": "active",
         "tasks": tasks or [],
     }
-    state["plan"]["goals"].append(goal)
+    state["mission"]["goals"].append(goal)
     return state
 
 
 def add_task(state: dict, goal_id: str, task_id: str, name: str) -> dict:
     """タスクを追加する。"""
-    for goal in state["plan"]["goals"]:
+    for goal in state["mission"]["goals"]:
         if goal["id"] == goal_id:
             task = {
                 "id": task_id,
@@ -168,7 +168,7 @@ def add_task(state: dict, goal_id: str, task_id: str, name: str) -> dict:
 
 def update_task_status(state: dict, task_id: str, status: str) -> dict:
     """タスクのステータスを更新する。"""
-    for goal in state["plan"]["goals"]:
+    for goal in state["mission"]["goals"]:
         for task in goal["tasks"]:
             if task["id"] == task_id:
                 task["status"] = status
@@ -181,8 +181,8 @@ def complete_goal(state: dict, goal_id: str) -> Optional[dict]:
     目標を完了としてマークし、goalsから除去する。
     除去された目標を返す（events.jsonlに記録するため）。
     """
-    for i, goal in enumerate(state["plan"]["goals"]):
+    for i, goal in enumerate(state["mission"]["goals"]):
         if goal["id"] == goal_id:
             goal["status"] = "done"
-            return state["plan"]["goals"].pop(i)
+            return state["mission"]["goals"].pop(i)
     return None

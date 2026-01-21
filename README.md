@@ -1,7 +1,7 @@
 # SPECTRA
 
 Grok API (xai-sdk) を使用したAIキャラクター基盤システム。
-Roblox、CLI、その他のプラットフォームから統一されたAPIでアクセス可能。
+Roblox、Console、その他のプラットフォームから統一されたAPIでアクセス可能。
 
 ## システム概要
 

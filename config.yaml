@@ -25,10 +25,7 @@ console_ui:
   glow_box: 1.0
   avatar_overlay_opacity: 1.0
   avatar_brightness: 1.5
-  name_tags:
-    avatar: SPECTRA
-    avatar_fullname: Spectra Communicator
-    user: USER
+  # name_tags は avatar/user から自動生成されるため省略
   system_messages:
     banner1: SYSTEM SPECTRA COMMAND ONLINE
     banner2: SESSION STANDBY
