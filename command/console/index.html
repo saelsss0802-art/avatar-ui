@@ -36,6 +36,8 @@
               <div class="mission-goals" id="mission-goals"></div>
             </div>
           </div>
+          <!-- ミッション/ダイアログ間のスプリッター -->
+          <div class="splitter splitter--vertical" data-target="mission-surface"></div>
           <!-- ダイアログペイン -->
           <div class="surface surface--dialogue">
             <div class="pane-header">
@@ -45,6 +47,8 @@
             </div>
             <div class="text-scroll" id="output"></div>
           </div>
+          <!-- ダイアログ/ターミナル間のスプリッター -->
+          <div class="splitter splitter--vertical" data-target="dialogue"></div>
           <!-- ターミナルペイン -->
           <div class="surface surface--terminal" id="terminal-surface">
             <div class="pane-header">
@@ -56,6 +60,9 @@
           </div>
         </div>
       </section>
+
+      <!-- 左右パネル間のスプリッター -->
+      <div class="splitter splitter--horizontal" id="splitter-main"></div>
 
       <!-- 入力欄 -->
       <footer data-slot="input" id="pane-input">

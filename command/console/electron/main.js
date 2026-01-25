@@ -45,8 +45,9 @@ const createTerminal = (webContents, cols, rows) => {
   if (!shell) {
     throw new Error('SPECTRA_SHELL is not set');
   }
-  if (!shell.toLowerCase().includes('bash')) {
-    throw new Error('SPECTRA_SHELL must be bash');
+  // bash または zsh を許可する。
+  if (!shell.toLowerCase().includes('bash') && !shell.toLowerCase().includes('zsh')) {
+    throw new Error('SPECTRA_SHELL must be bash or zsh');
   }
   const shellCwd = process.env.SPECTRA_SHELL_CWD;
   if (!shellCwd) {

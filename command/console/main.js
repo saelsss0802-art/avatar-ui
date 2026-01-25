@@ -190,6 +190,45 @@ const loadConsoleConfig = async () => {
   return api.getConsoleConfig();
 };
 
+// 最後に処理したイベントの時刻。
+let lastEventTime = null;
+// 初回ポーリングフラグ（過去イベントをスキップ）。
+let isFirstPoll = true;
+
+// イベントをポーリングしてdialogueに表示する。
+const pollEvents = async () => {
+  const api = requireSpectraApi();
+  if (!api.getRecentEvents) {
+    return;
+  }
+  try {
+    const data = await api.getRecentEvents(lastEventTime);
+    const events = data?.events || [];
+    for (const event of events) {
+      // 時刻を更新。
+      if (event.time) {
+        lastEventTime = event.time;
+      }
+      // 初回は時刻同期のみ（過去イベントは表示しない）。
+      if (isFirstPoll) {
+        continue;
+      }
+      // outputイベントをdialogueに表示。
+      if (event.type === 'output' && event.pane === 'dialogue') {
+        addLine('text-line--avatar', event.text);
+      }
+    }
+    isFirstPoll = false;
+    // イベントがあればペインも更新。
+    if (events.length > 0 && !isFirstPoll) {
+      updateMissionPane();
+      updateInspectorPane();
+    }
+  } catch (error) {
+    // ポーリングエラーは静かに無視。
+  }
+};
+
 // Missionペインを更新する。
 const updateMissionPane = async () => {
   const api = requireSpectraApi();
@@ -520,22 +559,32 @@ const setupTerminal = () => {
   // 提案されたターミナル操作を実行し、結果をコアに渡す。
   window.runTerminalCommand = (command, label) => {
     addLine('text-line--system', `> run ${label}`);
-    const observationApi = requireObservationApi();
+    const api = requireSpectraApi();
     runCommand(command)
       .then((result) => {
-        if (!result.buffer.trim()) {
-          return;
-        }
         const cleaned = stripAnsi(result.buffer).trimEnd();
         const suffix = result.truncated ? '\n... (truncated)' : '';
-        observationApi.sendObservation({
-          session_id: sessionId,
-          content: cleaned + suffix,
-        }).catch((error) => {
-          failFast(error instanceof Error ? error.message : String(error));
+        const content = cleaned + suffix;
+
+        // 観測結果を送信。
+        const observationPromise = content
+          ? api.sendObservation({ session_id: sessionId, content })
+          : Promise.resolve();
+
+        // タスク完了を通知。
+        return observationPromise.then(() => {
+          return api.completeAction({ success: true, summary: label });
         });
       })
+      .then(() => {
+        addLine('text-line--system', `> done ${label}`);
+        // ペインを更新。
+        updateMissionPane();
+        updateInspectorPane();
+      })
       .catch((error) => {
+        // 失敗時も完了通知を送る。
+        api.completeAction({ success: false, summary: error.message }).catch(() => {});
         failFast(error instanceof Error ? error.message : String(error));
       });
   };
@@ -616,13 +665,21 @@ const handleApprovalInput = () => {
     addLine('text-line--system', `> canceled ${action.label}`);
     return true;
   }
-  if (action.commandId === '__terminal__') {
-    runTerminalProposal(action.value, action.label);
-    return true;
-  }
-  applyAdminUpdate(action.commandId, action.value)
+  // 承認をCoreに通知してからコマンドを実行。
+  const api = requireSpectraApi();
+  api.approveAction()
     .then(() => {
-      inputEl.focus();
+      if (action.commandId === '__terminal__') {
+        runTerminalProposal(action.value, action.label);
+      } else {
+        applyAdminUpdate(action.commandId, action.value)
+          .then(() => {
+            inputEl.focus();
+          })
+          .catch((error) => {
+            failFast(error instanceof Error ? error.message : String(error));
+          });
+      }
     })
     .catch((error) => {
       failFast(error instanceof Error ? error.message : String(error));
@@ -699,6 +756,19 @@ try {
       updateMissionPane();
       updateInspectorPane();
       updateVitalsPane();
+      // purpose未設定なら問いかけを表示
+      const api = requireSpectraApi();
+      api.getState().then((state) => {
+        const purpose = state?.mission?.purpose;
+        const judgment = state?.thought?.judgment;
+        if (!purpose && judgment === 'purpose未設定') {
+          const avatarName = data?.avatar?.name || 'SPECTRA';
+          addLine('text-line--avatar', `${avatarName}> 目的が設定されていません。何を達成しましょうか？`);
+        }
+      }).catch(() => {});
+      // イベントポーリング開始（3秒間隔）
+      setInterval(pollEvents, 3000);
+      pollEvents();
     })
     .catch((error) => {
       failFast(error instanceof Error ? error.message : String(error));
@@ -908,3 +978,85 @@ if (inputEl) {
     }
   });
 }
+
+// --- スプリッター（リサイズハンドル）処理 ---
+// ペイン間の境界をドラッグしてサイズ調整する。
+(() => {
+  const root = document.documentElement;
+  const paneRight = document.getElementById('pane-right');
+  const splitterMain = document.getElementById('splitter-main');
+  const surfaceHost = document.getElementById('surface-host');
+
+  if (!splitterMain || !paneRight || !surfaceHost) {
+    return;
+  }
+
+  // 左右パネル間のスプリッター
+  let isDraggingMain = false;
+
+  splitterMain.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDraggingMain = true;
+    splitterMain.classList.add('is-dragging');
+    document.body.classList.add('is-resizing');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDraggingMain) {
+      return;
+    }
+    // 右パネル幅 = ウィンドウ右端 - マウスX座標 - 余白
+    const appRect = document.querySelector('.app').getBoundingClientRect();
+    const newWidth = appRect.right - e.clientX - 20;
+    const clamped = Math.max(120, Math.min(400, newWidth));
+    root.style.setProperty('--right-panel-width', `${clamped}px`);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDraggingMain) {
+      isDraggingMain = false;
+      splitterMain.classList.remove('is-dragging');
+      document.body.classList.remove('is-resizing');
+    }
+  });
+
+  // 垂直スプリッター（surface間）
+  const verticalSplitters = surfaceHost.querySelectorAll('.splitter--vertical');
+
+  verticalSplitters.forEach((splitter) => {
+    let isDragging = false;
+    let prevSurface = null;
+
+    splitter.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDragging = true;
+      prevSurface = splitter.previousElementSibling;
+      splitter.classList.add('is-dragging');
+      document.body.classList.add('is-resizing', 'is-resizing-vertical');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging || !prevSurface) {
+        return;
+      }
+      const hostRect = surfaceHost.getBoundingClientRect();
+      const surfaceRect = prevSurface.getBoundingClientRect();
+      // 上surfaceの高さ = マウスY - surface上端
+      const newHeight = e.clientY - surfaceRect.top;
+      const minH = 60;
+      const maxH = hostRect.height * 0.7;
+      const clamped = Math.max(minH, Math.min(maxH, newHeight));
+      prevSurface.style.flex = 'none';
+      prevSurface.style.height = `${clamped}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        splitter.classList.remove('is-dragging');
+        document.body.classList.remove('is-resizing', 'is-resizing-vertical');
+        prevSurface = null;
+      }
+    });
+  });
+})();

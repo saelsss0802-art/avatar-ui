@@ -10,6 +10,7 @@ import json
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 import yaml
@@ -192,6 +193,226 @@ class _SessionStore:
 
 _sessions = _SessionStore()
 
+# 自律ループ用のセッションID（内部用）。
+_CORE_SESSION_ID = "core-autonomous"
+
+# ループ制御用の状態。
+_loop_running = False
+_loop_thread: Optional[threading.Thread] = None
+_loop_stop_event = threading.Event()
+
+# ループ間隔（秒）。承認待ちや待機中は長めにする。
+_LOOP_INTERVAL_ACTIVE = 3.0
+_LOOP_INTERVAL_IDLE = 10.0
+
+
+def _run_autonomous_loop() -> None:
+    """
+    自律ループ本体。バックグラウンドスレッドで実行される。
+    Trigger → 思考 → 行動 → 結果 → Trigger...
+    """
+    global _loop_running
+    _loop_running = True
+
+    while not _loop_stop_event.is_set():
+        try:
+            interval = _cycle_step()
+        except Exception as exc:
+            # ループ内のエラーはログに記録して継続（fail-fastはリクエスト単位）。
+            print(f"[LOOP ERROR] {exc}")
+            interval = _LOOP_INTERVAL_IDLE
+
+        # 次のサイクルまで待機（中断可能）。
+        _loop_stop_event.wait(timeout=interval)
+
+    _loop_running = False
+
+
+def _cycle_step() -> float:
+    """
+    1サイクル分の処理を実行し、次のサイクルまでの待機時間を返す。
+    """
+    with _state_lock:
+        state_copy = copy.deepcopy(STATE)
+
+    mission = state_copy.get("mission", {})
+    purpose = mission.get("purpose")
+    action = state_copy.get("action")
+
+    # 承認待ち中はサイクルを一時停止。
+    if action and action.get("phase") == "approving":
+        return _LOOP_INTERVAL_IDLE
+
+    # 実行中はサイクルを一時停止（UIからの完了通知を待つ）。
+    if action and action.get("phase") == "executing":
+        return _LOOP_INTERVAL_IDLE
+
+    # purposeがなければ問いかけを生成。
+    if not purpose:
+        _ask_for_purpose()
+        return _LOOP_INTERVAL_IDLE
+
+    # 目標がなければ目標を生成。
+    goals = mission.get("goals", [])
+    if not goals:
+        _generate_goals(purpose)
+        return _LOOP_INTERVAL_ACTIVE
+
+    # activeな目標を取得。
+    active_goals = [g for g in goals if g.get("status") == "active"]
+    if not active_goals:
+        # 全目標完了。新しい目標を生成するか待機。
+        return _LOOP_INTERVAL_IDLE
+
+    # 最初のactive目標のタスクを確認。
+    current_goal = active_goals[0]
+    tasks = current_goal.get("tasks", [])
+    pending_tasks = [t for t in tasks if t.get("status") == "pending"]
+
+    if not pending_tasks:
+        # タスクがなければタスクを生成。
+        _generate_tasks(current_goal)
+        return _LOOP_INTERVAL_ACTIVE
+
+    # 次のタスクを実行（承認が必要なら承認待ちに移行）。
+    next_task = pending_tasks[0]
+    _execute_task(current_goal, next_task)
+    return _LOOP_INTERVAL_ACTIVE
+
+
+def _ask_for_purpose() -> None:
+    """purposeがないときにAvatarがdialogueで問いかける。一度だけ。"""
+    # すでに問いかけ済みならスキップ。
+    with _state_lock:
+        if STATE.get("thought", {}).get("judgment") == "purpose未設定":
+            return
+
+    avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
+    message = f"{avatar_name}> 目的が設定されていません。何を達成しましょうか？"
+
+    with _state_lock:
+        update_thought(STATE, "purpose未設定", "ユーザーに問いかけ")
+        save_state(STATE)
+    append_event("thought", judgment="purpose未設定", intent="ユーザーに問いかけ")
+
+    # dialogueに出力（UIが取得する用のイベント）。
+    append_event("output", pane="dialogue", text=message)
+
+
+def _generate_goals(purpose: str) -> None:
+    """purposeから目標を生成する（LLMに依頼）。"""
+    chat = _client.chat.create(model=CONFIG["grok"]["model"], temperature=0.3)
+    chat.append(
+        system(
+            "あなたは目標生成AIです。与えられた目的に対して、達成可能な目標を1〜3個生成してください。\n"
+            "JSON形式で返してください: {\"goals\": [{\"id\": \"G1\", \"name\": \"目標名\"}]}"
+        )
+    )
+    chat.append(user(f"目的: {purpose}"))
+    result = chat.sample()
+    raw = getattr(result, "content", "")
+
+    try:
+        data = json.loads(raw)
+        goals = data.get("goals", [])
+    except json.JSONDecodeError:
+        # パース失敗時は再試行。
+        return
+
+    with _state_lock:
+        for g in goals:
+            add_goal(STATE, g["id"], g["name"])
+        save_state(STATE)
+
+    append_event("thought", judgment=f"目標生成: {len(goals)}個", intent="タスク生成へ")
+
+
+def _generate_tasks(goal: dict) -> None:
+    """目標からタスクを生成する（LLMに依頼）。"""
+    chat = _client.chat.create(model=CONFIG["grok"]["model"], temperature=0.3)
+    chat.append(
+        system(
+            "あなたはタスク生成AIです。与えられた目標に対して、具体的なタスクを3〜5個生成してください。\n"
+            "JSON形式で返してください: {\"tasks\": [{\"id\": \"G1-T1\", \"name\": \"タスク名\"}]}"
+        )
+    )
+    chat.append(user(f"目標: {goal['name']}"))
+    result = chat.sample()
+    raw = getattr(result, "content", "")
+
+    try:
+        data = json.loads(raw)
+        tasks = data.get("tasks", [])
+    except json.JSONDecodeError:
+        return
+
+    with _state_lock:
+        for t in tasks:
+            add_task(STATE, goal["id"], t["id"], t["name"])
+        save_state(STATE)
+
+    append_event("thought", judgment=f"タスク生成: {len(tasks)}個", intent="実行へ")
+
+
+def _execute_task(goal: dict, task: dict) -> None:
+    """タスクを実行する（LLMに実行方法を聞いて承認待ちに移行）。"""
+    with _state_lock:
+        update_task_status(STATE, task["id"], "active")
+        save_state(STATE)
+
+    chat = _client.chat.create(model=CONFIG["grok"]["model"], temperature=0.5)
+    chat.append(
+        system(
+            "あなたはタスク実行AIです。与えられたタスクを実行するためのコマンドを提案してください。\n"
+            "JSON形式で返してください: {\"command\": \"bashコマンド\", \"summary\": \"実行概要\"}\n"
+            "会話だけで完了するタスクの場合は: {\"command\": null, \"summary\": \"完了理由\"}"
+        )
+    )
+    chat.append(user(f"タスク: {task['name']}"))
+    result = chat.sample()
+    raw = getattr(result, "content", "")
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+
+    command = data.get("command")
+    summary = data.get("summary", task["name"])
+
+    with _state_lock:
+        update_thought(STATE, f"タスク: {task['name']}", f"実行: {summary}")
+        if command:
+            # コマンド実行が必要 → 承認待ち。
+            update_action(STATE, "approving", summary)
+        else:
+            # 会話のみで完了 → 即完了。
+            update_task_status(STATE, task["id"], "done")
+            update_result(STATE, "done", summary)
+        save_state(STATE)
+
+    if command:
+        append_event("thought", judgment=f"タスク: {task['name']}", intent=f"承認待ち: {summary}")
+    else:
+        append_event("result", status="done", summary=summary)
+
+
+def start_loop() -> None:
+    """自律ループを開始する。"""
+    global _loop_thread
+    if _loop_thread and _loop_thread.is_alive():
+        return
+    _loop_stop_event.clear()
+    _loop_thread = threading.Thread(target=_run_autonomous_loop, daemon=True)
+    _loop_thread.start()
+
+
+def stop_loop() -> None:
+    """自律ループを停止する。"""
+    _loop_stop_event.set()
+    if _loop_thread:
+        _loop_thread.join(timeout=5.0)
+
 
 class ThinkRequest(BaseModel):
     # 新設計: source/text/session_id。authorityはsourceから自動導出。
@@ -237,6 +458,10 @@ def think_core(source: str, text: str, session_id: str) -> dict:
     # 入力状態を更新し、イベントを記録する。
     with _state_lock:
         update_input(STATE, source, authority, text)
+        # purposeが空ならユーザーの入力をpurposeとして設定。
+        if not STATE["mission"]["purpose"] and source == "dialogue":
+            set_purpose(STATE, text)
+            update_thought(STATE, "purpose設定", f"目的: {text}")
         save_state(STATE)
     append_event("input", source=source, text=text)
 
@@ -334,6 +559,18 @@ def _save_config(updated: dict) -> None:
 app = FastAPI()
 
 
+@app.on_event("startup")
+def on_startup():
+    """起動時に自律ループを開始する。"""
+    start_loop()
+
+
+@app.on_event("shutdown")
+def on_shutdown():
+    """終了時に自律ループを停止する。"""
+    stop_loop()
+
+
 def _check_api_key(request: Request) -> None:
     # 共有APIキーは必須なので一致しない場合は即拒否する。
     provided = request.headers.get("x-api-key")
@@ -354,6 +591,29 @@ def think(payload: ThinkRequest, request: Request):
 def health():
     # 死活監視用のシンプルな応答。
     return {"status": "ok"}
+
+
+@app.get("/loop/status")
+def loop_status(request: Request):
+    # 自律ループの状態を返す。
+    _check_api_key(request)
+    return {"running": _loop_running}
+
+
+@app.post("/loop/start")
+def loop_start(request: Request):
+    # 自律ループを開始する。
+    _check_api_key(request)
+    start_loop()
+    return {"running": True}
+
+
+@app.post("/loop/stop")
+def loop_stop(request: Request):
+    # 自律ループを停止する。
+    _check_api_key(request)
+    stop_loop()
+    return {"running": False}
 
 
 @app.get("/console-config")
@@ -390,6 +650,30 @@ def get_state(request: Request):
     _check_api_key(request)
     with _state_lock:
         return copy.deepcopy(STATE)
+
+
+@app.get("/events/recent")
+def get_recent_events(request: Request, after: str = None, limit: int = 20):
+    """最近のイベントを取得する。afterで指定した時刻以降のイベントのみ返す。"""
+    _check_api_key(request)
+    events = []
+    events_file = Path(__file__).resolve().parent.parent / "data" / "events.jsonl"
+    if not events_file.exists():
+        return {"events": []}
+    with open(events_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+                if after and event.get("time", "") <= after:
+                    continue
+                events.append(event)
+            except json.JSONDecodeError:
+                continue
+    # 最新のlimit件を返す。
+    return {"events": events[-limit:]}
 
 
 class PurposeRequest(BaseModel):
@@ -466,11 +750,86 @@ def reject_action(request: Request):
         if not STATE.get("action"):
             raise HTTPException(status_code=400, detail="No action to reject")
         summary = STATE["action"]["summary"]
+        # activeなタスクをfailに更新。
+        _mark_active_task("fail")
         clear_action(STATE)
         update_result(STATE, "fail", f"拒否: {summary}")
         save_state(STATE)
     append_event("result", status="fail", summary=f"拒否: {summary}")
     return {"result": STATE["result"]}
+
+
+@app.post("/admin/approve")
+def approve_action(request: Request):
+    """承認待ちの行動を承認し、実行中に移行する。"""
+    _check_api_key(request)
+    with _state_lock:
+        if not STATE.get("action"):
+            raise HTTPException(status_code=400, detail="No action to approve")
+        if STATE["action"]["phase"] != "approving":
+            raise HTTPException(status_code=400, detail="Action is not awaiting approval")
+        STATE["action"]["phase"] = "executing"
+        save_state(STATE)
+    append_event("action", phase="executing", summary=STATE["action"]["summary"])
+    return {"action": STATE["action"]}
+
+
+class CompleteRequest(BaseModel):
+    # タスク完了通知用。
+    success: bool = True
+    summary: Optional[str] = None
+
+
+@app.post("/admin/complete")
+def complete_action(payload: CompleteRequest, request: Request):
+    # 現在の行動を完了し、タスクを更新する。
+    _check_api_key(request)
+    with _state_lock:
+        if not STATE.get("action"):
+            raise HTTPException(status_code=400, detail="No action to complete")
+        if STATE["action"]["phase"] != "executing":
+            raise HTTPException(status_code=400, detail="Action is not executing")
+
+        summary = payload.summary or STATE["action"]["summary"]
+        status = "done" if payload.success else "fail"
+
+        # activeなタスクを更新。
+        _mark_active_task(status)
+
+        # 目標の完了チェック。
+        _check_goal_completion()
+
+        clear_action(STATE)
+        update_result(STATE, status, summary)
+        save_state(STATE)
+
+    append_event("result", status=status, summary=summary)
+    return {"result": STATE["result"]}
+
+
+def _mark_active_task(status: str) -> None:
+    """activeなタスクを指定のステータスに更新する（ロック内で呼ぶこと）。"""
+    for goal in STATE["mission"]["goals"]:
+        for task in goal.get("tasks", []):
+            if task["status"] == "active":
+                task["status"] = status
+                return
+
+
+def _check_goal_completion() -> None:
+    """全タスク完了時に目標を完了にする（ロック内で呼ぶこと）。"""
+    for goal in STATE["mission"]["goals"]:
+        if goal["status"] != "active":
+            continue
+        tasks = goal.get("tasks", [])
+        if not tasks:
+            continue
+        # 全タスクがdoneまたはfailなら目標完了。
+        if all(t["status"] in ("done", "fail") for t in tasks):
+            done_count = sum(1 for t in tasks if t["status"] == "done")
+            rate = f"{int(done_count / len(tasks) * 100)}%"
+            goal["status"] = "done"
+            append_event("result", status="goal_done", goal=goal["id"], name=goal["name"], rate=rate)
 
 
 @app.post("/admin/config")
