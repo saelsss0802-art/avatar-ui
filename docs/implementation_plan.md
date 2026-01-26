@@ -219,6 +219,36 @@ spectra/
   - `/console-config`で`avatar`/`user`を`name_tags`に注入
   - `config.yaml`から重複した`name_tags`を削除
 
+#### 2.7 実行アーキテクチャ
+
+> 設計: `docs/agent_design.md` > 実行アーキテクチャ
+
+##### 2.7.1 現行実装の修正
+- [ ] プロンプトカスタマイズ（PS1環境変数でディレクトリ名表示）
+- [ ] cwd設定（spectra-workspace/をデフォルトに）
+- [ ] シェル選択のOS標準化（macOS=zsh, Windows=PowerShell, Linux=bash）
+
+##### 2.7.2 Exec Contract
+- [ ] ExecRequest型定義（backend, action, params, cwd, capability_ref）
+- [ ] ExecStream型定義（type, data, timestamp）
+- [ ] ExecResult型定義（status, exit_code, summary, artifacts）
+- [ ] 型定義をドキュメントに追加
+
+##### 2.7.3 Backend Router
+- [ ] Terminal BackendとしてPTYをラップ
+- [ ] Backend Router最小実装（Terminal/Dialogue分岐）
+- [ ] ExecRequest→Backend→ExecResultのフロー実装
+
+##### 2.7.4 ワークスペース制約
+- [ ] Runtime層でcwd検証（workspace内のみ許可）
+- [ ] アバター操作: workspace外アクセスを拒否
+- [ ] ユーザー操作: workspace外アクセスは警告のみ
+
+##### 2.7.5 Roblox Backend（将来）
+- [ ] Roblox Backend最小実装
+- [ ] HttpService経由のExecRequest受信
+- [ ] ExecResult返却
+
 ### Phase 3: Coreの最小骨格
 - [ ] `core/brain.py` — LLM + Context の統合
 - [ ] `core/policy.py` — 承認判定の最小版
