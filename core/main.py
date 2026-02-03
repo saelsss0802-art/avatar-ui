@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import platform
 import threading
 import time
 from pathlib import Path
@@ -162,8 +163,17 @@ def _get_token_usage() -> dict:
         }
 
 
+def _build_env_context() -> str:
+    """実行環境のコンテキストを生成する。"""
+    from core.exec import get_avatar_space
+    return f"""## 実行環境
+- OS: {platform.system()} {platform.release()}
+- Shell: {os.environ.get('SHELL', 'unknown')}
+- CWD: {get_avatar_space()}"""
+
+
 def _build_system_prompt() -> str:
-    """人格と行動原則を定義する。"""
+    """人格と行動原則を定義する（環境情報とstate含む）。"""
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
     user_name = CONFIG.get("user", {}).get("name", "User")
 
@@ -176,6 +186,10 @@ def _build_system_prompt() -> str:
 3. タスク（task）がなければ、目標からタスクを生成する
 4. 次の1手を決定し、実行する
 5. 会話以外のアクションは承認を求める
+
+{_build_env_context()}
+
+{_build_state_context()}
 
 ## 基本設定
 {CONFIG.get("system_prompt", "")}
@@ -281,7 +295,6 @@ def _get_loop_config():
     loop_cfg = CONFIG.get("autonomous_loop", {})
     return {
         "notify_result": loop_cfg.get("notify_result", True),
-        "on_conversation_complete": loop_cfg.get("on_conversation_complete", "idle"),
         "result_interval": loop_cfg.get("result_interval", _LOOP_INTERVAL_DEFAULT),
     }
 
@@ -333,7 +346,6 @@ def _cycle_step() -> float:
     pause_phases = {
         "approving",
         "executing",
-        "awaiting_continue",
         "awaiting_purpose_confirm",
         "awaiting_purpose_type",
         "awaiting_goals_confirm",
@@ -704,7 +716,8 @@ def _handle_goals_confirm_response(text: str, session_id: str) -> dict:
 def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = None) -> bool:
     """目標に対するタスク候補を提案し、ユーザー承認待ちにする。"""
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
-    append_event("output", pane="dialogue", text=f"{avatar_name}> タスク案を考えています...")
+    goal_id = goal.get("id", "G?")
+    append_event("output", pane="dialogue", text=f"{avatar_name}> {goal_id}のタスクを考えています...")
 
     completed_tasks = [t for t in existing_tasks if t.get("status") == "done"]
     completed_names = [t["name"] for t in completed_tasks]
@@ -766,7 +779,7 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
         update_thought(STATE, f"タスク提案: {len(tasks)}件", "ユーザー承認待ち")
         save_state(STATE)
 
-    append_event("output", pane="dialogue", text=f"{avatar_name}> タスク案を提案します。")
+    append_event("output", pane="dialogue", text=f"{avatar_name}> {goal_id}のタスク案を提案します。")
     for idx, t in enumerate(tasks, start=1):
         append_event("output", pane="dialogue", text=f"{avatar_name}> {idx}. {t['name']}")
     append_event(
@@ -977,16 +990,8 @@ def _execute_task(goal: dict, task: dict) -> float:
         # 結果をdialogueに出力
         if loop_cfg["notify_result"]:
             append_event("output", pane="dialogue", text=f"✓ 完了: {summary}")
-        # 会話完了後の動作: idle or continue
-        if loop_cfg["on_conversation_complete"] == "idle":
-            # 続行確認待ちに移行
-            with _state_lock:
-                update_action(STATE, "awaiting_continue", summary)
-                save_state(STATE)
-            append_event("output", pane="dialogue", text="[Enter] で続行")
-            return _loop_interval_idle()
-        else:
-            return _loop_interval_result()
+        # 会話タスク完了後は常に自動続行
+        return _loop_interval_result()
 
 
 def start_loop() -> None:
@@ -1037,7 +1042,10 @@ class AdminConfigUpdate(BaseModel):
 class ObservationRequest(BaseModel):
     # ターミナルなどの観測結果をセッションに追加する。
     session_id: str
-    content: str
+    content: Optional[str] = None  # 後方互換
+    command: Optional[str] = None
+    output: Optional[str] = None
+    label: Optional[str] = None
 
 
 class ConsoleLogRequest(BaseModel):
@@ -1105,11 +1113,28 @@ def think_core(source: str, text: str, session_id: str) -> dict:
     with _state_lock:
         update_input(STATE, source, authority, text)
         # purposeが空ならユーザーの入力をpurposeとして設定。
-        if not STATE["mission"]["purpose"] and source == "dialogue":
+        purpose_was_empty = not STATE["mission"]["purpose"]
+        if purpose_was_empty and source == "dialogue":
             set_purpose(STATE, text)
             update_thought(STATE, "purpose設定", f"目的: {text}")
         save_state(STATE)
     append_event("input", source=source, text=text)
+
+    # 目的設定直後は、LLM呼び出しを行わず目的タイプ質問を待つ
+    if purpose_was_empty and source == "dialogue":
+        avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
+        _loop_wake_event.set()  # ループを起こして目的タイプ質問を発動
+        return {
+            "response": f"目的を「{text}」に設定しました。",
+            "source": source,
+            "authority": authority,
+            "session_id": session_id,
+            "response_id": "purpose_set",
+            "intent": "conversation",
+            "route": "dialogue",
+            "needs_approval": False,
+            "proposal": None,
+        }
 
     chat = _sessions.get_chat(session_id)
     # 状態コンテキストを付加してLLMに渡す
@@ -1419,6 +1444,23 @@ def approve_action(request: Request):
     return {"action": STATE["action"]}
 
 
+@app.post("/admin/reject")
+def reject_action(request: Request):
+    """承認待ちの行動を拒否し、状態をクリアする。"""
+    _check_api_key(request)
+    with _state_lock:
+        if not STATE.get("action"):
+            raise HTTPException(status_code=400, detail="No action to reject")
+        if STATE["action"]["phase"] != "approving":
+            raise HTTPException(status_code=400, detail="Action is not awaiting approval")
+        summary = STATE["action"]["summary"]
+        clear_action(STATE)
+        save_state(STATE)
+    append_event("action", phase="rejected", summary=summary)
+    _loop_wake_event.set()  # ループを起こして次の処理へ
+    return {"status": "rejected", "summary": summary}
+
+
 class CompleteRequest(BaseModel):
     # タスク完了通知用。
     success: bool = True
@@ -1447,10 +1489,14 @@ def complete_action(payload: CompleteRequest, request: Request):
 
     append_event("result", status=status, summary=summary)
 
-    # ループを起こす（次のタスクへ進む）
-    _loop_wake_event.set()
+    # 次のタスクを同期的に処理（ループに委任せず即座に実行）
+    _cycle_step()
 
-    return {"result": STATE["result"]}
+    # 次のアクション情報を含めて返す
+    with _state_lock:
+        next_action = copy.deepcopy(STATE.get("action"))
+    
+    return {"result": STATE["result"], "action": next_action}
 
 
 @app.post("/admin/reset")
@@ -1537,13 +1583,68 @@ def admin_config_update(payload: AdminConfigUpdate, request: Request):
 
 @app.post("/admin/observation")
 def admin_observation(payload: ObservationRequest, request: Request):
-    # ターミナル実行結果などをセッションに追加する。
+    """ターミナル実行結果を受け取り、LLMで差分検証を行う。"""
     _check_api_key(request)
-    if not payload.content.strip():
-        raise HTTPException(status_code=400, detail="content is empty")
-    chat = _sessions.get_chat(payload.session_id)
-    chat.append(system(f"TERMINAL_RESULT:\n{payload.content}"))
-    return {"status": "ok"}
+    
+    # 後方互換: contentのみの場合
+    if payload.content and not payload.command:
+        chat = _sessions.get_chat(payload.session_id)
+        chat.append(system(f"TERMINAL_RESULT:\n{payload.content}"))
+        return {"status": "ok", "success": True, "summary": "completed"}
+    
+    # 新形式: command + output でLLM検証
+    command = payload.command or ""
+    output = payload.output or "(no output)"
+    label = payload.label or command
+    
+    # 現在のタスクの成功条件を取得
+    with _state_lock:
+        active_task = None
+        for goal in STATE.get("mission", {}).get("goals", []):
+            for task in goal.get("tasks", []):
+                if task.get("status") == "active":
+                    active_task = task
+                    break
+            if active_task:
+                break
+        success_condition = active_task.get("name", label) if active_task else label
+    
+    # LLMに差分検証を依頼（出力形式を最終形式に統一）
+    chat = _sessions.get_chat(_CORE_SESSION_ID)
+    verify_prompt = f"""以下のコマンド実行結果を検証してください。
+
+タスク: {success_condition}
+コマンド: {command}
+出力:
+{output[:1000]}
+
+結果を1行で回答してください（他の文言は不要）:
+- 成功: done: [タスク要約]
+- 失敗: failed: [失敗理由]
+"""
+    chat.append(user(verify_prompt))
+    response = chat.sample()
+    _track_usage(response)
+    
+    response_text = (getattr(response, "content", "") or "").strip()
+    
+    # 成功/失敗と要約を解析
+    if response_text.lower().startswith("done:"):
+        success = True
+        message = response_text[5:].strip() or label
+    elif response_text.lower().startswith("failed:"):
+        success = False
+        message = response_text[7:].strip() or label
+    else:
+        # パース失敗時はデフォルトで成功扱い
+        success = True
+        message = label
+    
+    # セッションに結果を追加
+    result_label = "done" if success else "failed"
+    chat.append(system(f"TASK_RESULT: {result_label}: {message}"))
+    
+    return {"status": "ok", "success": success, "message": f"{result_label}: {message}"}
 
 
 @app.post("/admin/console-log")

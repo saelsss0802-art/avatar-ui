@@ -914,3 +914,9 @@ body.is-resizing-vertical {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* 承認メニュー（矢印選択式）。 */
+.approval-menu-line {
+  font-family: var(--font-main);
+  white-space: pre;
+}

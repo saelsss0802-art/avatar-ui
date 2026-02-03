@@ -104,3 +104,158 @@
 **案C+（定義レベルの原則）を採用し、Codexの案Bを最初の具体施策として実装**するのが最も合理的。
 
 この方向で進める？
+
+[4 tools called]
+
+現在の承認UIを3択選択式に変更します。
+
+[2 tools called]
+
+承認UIを3択選択式に変更する実装を開始します。
+
+[6 tools called]
+
+まず、`handleNoInputWithLLM`関数を追加します：
+
+[2 tools called]
+
+「Always allow」の処理を追加します：
+
+[2 tools called]
+
+ホワイトリスト管理と矢印キーハンドリングを追加します：
+
+[2 tools called]
+
+`requestApproval`でホワイトリストチェックを追加します：
+
+[2 tools called]
+
+矢印キーハンドリングを承認メニューに対応させます：
+
+[11 tools called]
+
+Core側に承認拒否エンドポイントを追加します：
+
+[11 tools called]
+
+## 実装完了
+
+承認UIを3択選択式に変更しました。
+
+### 変更内容
+
+**1. 承認メニューUI (`command/console/main.js`)**
+```
+> approve コマンドを実行してファイルを作成
+  ▸ [y] Yes, allow once
+    [a] Always allow
+    [n] No (deny or give alternate instructions)
+```
+
+- 矢印キー（↑↓）で選択を移動
+- Enter または y/a/n のショートカットで確定
+- ESC でキャンセル
+
+**2. 「Always allow」ホワイトリスト**
+- コマンドのプログラム名（最初の単語）をローカルストレージに保存
+- ホワイトリストに登録されたコマンドは自動承認
+
+**3. 「No」選択後の自由入力**
+- 自由入力モードに移行
+- LLMがユーザー入力を解釈して適切に対応
+  - 修正指示 → 新しいコマンドを提案
+  - 会話 → 応答後、承認を終了
+  - キャンセル → 承認を終了
+
+**4. Core側 (`core/main.py`)**
+- `/admin/reject` エンドポイントを追加
+- 承認拒否時に状態をクリアしてループを起動
+
+**5. Preload API (`preload.js`)**
+- `rejectAction` を追加して公開
+
+---
+
+動作確認には Electron Console を再起動してください。
+
+## 回答
+
+### 1. ホワイトリストの保存場所
+
+**通例の比較：**
+
+| 保存場所 | 使用例 | メリット | デメリット |
+|---------|--------|---------|-----------|
+| localStorage | ブラウザ拡張、Electron UI設定 | シンプル、即座に反映 | UIとCore間で共有不可 |
+| `data/` (JSONL/JSON) | ログ、状態ファイル | Core側でも参照可能、永続的 | 実装がやや複雑 |
+| `config.yaml` | ユーザー設定 | 明示的、バージョン管理可 | 動的更新に不向き |
+
+**推奨：** `data/allowlist.json` に保存。理由：
+- Core側でもホワイトリストを参照できる（将来の自動承認ロジック用）
+- UI再インストール時も保持される
+- `data/`は既にユーザーデータ用として使用されている
+
+---
+
+### 2-4. 実装
+
+#### 「n」の文言候補ブレスト
+
+| 案 | 評価 |
+|----|------|
+| `No, and give me options` | △ 曖昧 |
+| `Deny and respond` | △ 硬い |
+| `Skip (I'll explain)` | ○ 直感的 |
+| `Pass (tell me what to do instead)` | ○ 会話的 |
+| `Not this — let me explain` | ◎ 明確で自然 |
+| `No — I'll give instructions` | ◎ シンプルで明確 |
+
+**推奨：** `No — I'll give instructions`
+- 拒否の意図が明確
+- 次のアクション（指示を出す）が伝わる
+- 英語圏でも日本人にも理解しやすい
+
+---
+
+実装します：
+
+[3 tools called]
+
+次に、ホワイトリストを`data/allowlist.json`に保存するように変更します：
+
+[7 tools called]
+
+## 実装完了
+
+### 変更内容
+
+**1. ホワイトリストの保存場所**
+- `localStorage` → `data/allowlist.json` に変更
+- `preload.js` でファイルI/Oを実装
+
+**2. 文言変更**
+```
+> approve コマンドを実行
+  ▸ Yes, allow once
+    Yes, always allow (add to allowlist)
+    No — I'll give instructions
+```
+
+**3. ショートカットキー削除**
+- `[y]`, `[a]`, `[n]` 表記を削除
+- y/a/n キー選択ロジックを削除
+- 操作は矢印キー（↑↓）+ Enter、または ESC キャンセルのみ
+
+---
+
+### ファイル構成
+
+```
+data/
+├── allowlist.json    ← NEW: ホワイトリスト
+├── events.jsonl
+├── state.json
+└── logs/
+    └── console.jsonl
+```

@@ -2,8 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const { contextBridge, ipcRenderer } = require('electron');
 
+// プロジェクトルートのパス
+const projectRoot = path.join(__dirname, '..', '..', '..');
+
 // .envは標準の場所があるので、環境変数があれば優先して読み込む。
-const envPath = process.env.SPECTRA_ENV_PATH || path.join(__dirname, '..', '..', '..', '.env');
+const envPath = process.env.SPECTRA_ENV_PATH || path.join(projectRoot, '.env');
 if (!fs.existsSync(envPath)) {
   throw new Error(`.env not found: ${envPath}`);
 }
@@ -195,6 +198,24 @@ const approveAction = async () => {
   return data;
 };
 
+// Core に承認拒否を通知する。
+const rejectAction = async () => {
+  const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
+  const response = await fetch(`${baseUrl}/admin/reject`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    },
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data?.detail ?? response.statusText;
+    throw new Error(message);
+  }
+  return data;
+};
+
 // Core にタスク完了を通知する。
 const completeAction = async (payload = {}) => {
   const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
@@ -271,6 +292,41 @@ const getSystemInfo = async () => {
   return ipcRenderer.invoke('system:info');
 };
 
+// Allowlist管理（data/allowlist.json）
+const allowlistPath = path.join(projectRoot, 'data', 'allowlist.json');
+
+const getAllowlist = () => {
+  try {
+    if (fs.existsSync(allowlistPath)) {
+      const content = fs.readFileSync(allowlistPath, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch {
+    // ファイルがないか読み込みエラー
+  }
+  return [];
+};
+
+const addToAllowlist = (program) => {
+  if (!program) return;
+  const list = getAllowlist();
+  if (!list.includes(program)) {
+    list.push(program);
+    // dataディレクトリがなければ作成
+    const dataDir = path.dirname(allowlistPath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(allowlistPath, JSON.stringify(list, null, 2), 'utf8');
+  }
+};
+
+const isInAllowlist = (command) => {
+  if (!command) return false;
+  const program = command.split(' ')[0];
+  return getAllowlist().includes(program);
+};
+
 // レンダラに必要最小限のAPIだけ公開する。
 contextBridge.exposeInMainWorld('spectraApi', {
   think,
@@ -283,11 +339,15 @@ contextBridge.exposeInMainWorld('spectraApi', {
   sendObservation,
   logConsole,
   approveAction,
+  rejectAction,
   completeAction,
   resetState,
   continueLoop,
   getHealth,
   getSystemInfo,
+  getAllowlist,
+  addToAllowlist,
+  isInAllowlist,
 });
 
 // 端末操作をレンダラに公開する。

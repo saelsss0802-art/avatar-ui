@@ -101,6 +101,8 @@ let adminConfig = null;
 let isFatal = false;
 let commandState = null;
 let pendingApproval = null;
+let approvalMenuIndex = 0; // 承認メニューの選択インデックス (0=Yes, 1=Always, 2=No)
+let pendingNoInput = null; // No選択後の自由入力モード
 let terminalCapture = null;
 
 const requireSpectraApi = () => {
@@ -108,6 +110,21 @@ const requireSpectraApi = () => {
     failFast('spectraApi is not available');
   }
   return window.spectraApi;
+};
+
+// ホワイトリスト管理（Always allow用）- data/allowlist.json に保存
+const addToApprovalWhitelist = (command) => {
+  if (!command) return;
+  const program = command.split(' ')[0];
+  const api = window.spectraApi;
+  if (api?.addToAllowlist) {
+    api.addToAllowlist(program);
+  }
+};
+
+const isCommandWhitelisted = (command) => {
+  const api = window.spectraApi;
+  return api?.isInAllowlist ? api.isInAllowlist(command) : false;
 };
 
 // 端末APIが無ければ即停止する。
@@ -619,7 +636,6 @@ const setupTerminal = () => {
 
   // ANSIエスケープを除去して読みやすくする。
   const stripAnsi = (value) => value.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').replace(/\u001b\][^\u0007]*\u0007/g, '');
-  const EXIT_MARKER = '__SPECTRA_EXIT_CODE__:';
 
   // ターミナル実行の出力を一定時間だけ集めて確認する。
   const runCommand = (command) => {
@@ -641,56 +657,54 @@ const setupTerminal = () => {
           resolve(result);
         },
       };
-      const wrapped = `${command}; echo ${EXIT_MARKER}$?\r`;
-      terminalApi.write(wrapped);
+      // コマンドをそのまま実行（マーカーなし）
+      terminalApi.write(`${command}\r`);
     });
   };
 
   // 提案されたターミナル操作を実行し、結果をコアに渡す。
+  // 成功/失敗はLLMによる差分検証で判定（終了コード不使用）。
   window.runTerminalCommand = (command, label) => {
     addLine('text-line--system', `> run ${label}`);
     const api = requireSpectraApi();
-    let exitCode = null;
-    let success = false;
     runCommand(command)
       .then((result) => {
-        const markerMatch = result.buffer.match(/__SPECTRA_EXIT_CODE__:(\d+|True|False)/);
-        if (markerMatch) {
-          const rawCode = markerMatch[1];
-          if (rawCode === 'True') {
-            exitCode = 0;
-          } else if (rawCode === 'False') {
-            exitCode = 1;
-          } else {
-            exitCode = Number(rawCode);
-          }
-        }
-        success = exitCode === 0;
         const cleaned = stripAnsi(result.buffer).replace(/\r/g, '').trimEnd();
-        const content = cleaned.replace(/__SPECTRA_EXIT_CODE__:(\d+|True|False)\n?/g, '').trimEnd();
         const suffix = result.truncated ? '\n... (truncated)' : '';
-        const output = content + suffix;
+        const output = cleaned + suffix;
         if (output.trim()) {
           logConsoleEntry({ kind: 'terminal', text: output, pane: 'terminal' });
         }
 
-        // 観測結果を送信。
-        const observationPromise = output
-          ? api.sendObservation({ session_id: sessionId, content: output })
-          : Promise.resolve();
-
-        // タスク完了を通知。
-        return observationPromise.then(() => {
-          const summary = success ? label : `${label} (exit code ${exitCode ?? 'unknown'})`;
-          return api.completeAction({ success, summary });
-        });
+        // 観測結果（差分）を送信し、LLMに検証させる。
+        // observationにはコマンドと出力を含める。
+        const observation = {
+          session_id: sessionId,
+          command,
+          output: output || '(no output)',
+          label,
+        };
+        return api.sendObservation(observation);
       })
-      .then(() => {
-        const statusLabel = success ? 'done' : 'failed';
-        addLine('text-line--system', `> ${statusLabel} ${label}`);
-        // ペインを更新。
+      .then((verifyResult) => {
+        // Core側で差分検証した結果を受け取る
+        const success = verifyResult?.success !== false;
+        const message = verifyResult?.message || `done: ${label}`;
+        return api.completeAction({ success, summary: message }).then((result) => ({
+          message,
+          nextAction: result?.action,
+        }));
+      })
+      .then(({ message, nextAction }) => {
+        // LLMの出力（done:/failed:）をそのまま表示
+        addLine('text-line--system', `> ${message}`);
+        // ペインを更新
         updateMissionPane();
         updateInspectorPane();
+        // 次のアクションがあれば承認プロンプトを表示
+        if (nextAction?.phase === 'approving' && nextAction?.command && !pendingApproval) {
+          requestApproval('__terminal__', nextAction.command, nextAction.summary || nextAction.command);
+        }
       })
       .catch((error) => {
         // 失敗時も完了通知を送る。
@@ -749,10 +763,51 @@ const resetCommandState = () => {
   hidePalette();
 };
 
+// 承認メニューの選択肢
+const APPROVAL_OPTIONS = [
+  { key: 'y', label: 'Yes, allow once' },
+  { key: 'a', label: 'Yes, always allow (add to allowlist)' },
+  { key: 'n', label: "No — I'll give instructions" },
+];
+
+// 承認メニューを表示する。
+const renderApprovalMenu = () => {
+  if (!pendingApproval) return;
+  // 既存のメニュー行を削除
+  const existingMenu = document.querySelectorAll('.approval-menu-line');
+  existingMenu.forEach((el) => el.remove());
+  // 選択肢を表示
+  APPROVAL_OPTIONS.forEach((opt, idx) => {
+    const line = document.createElement('div');
+    line.className = 'text-line text-line--system approval-menu-line';
+    const marker = idx === approvalMenuIndex ? '▸' : ' ';
+    line.textContent = `  ${marker} ${opt.label}`;
+    outputEl.appendChild(line);
+  });
+  outputEl.scrollTop = outputEl.scrollHeight;
+};
+
 // 承認が必要な操作を記録する。
 const requestApproval = (commandId, value, label) => {
+  // ホワイトリストに登録されているコマンドは自動承認
+  if (commandId === '__terminal__' && isCommandWhitelisted(value)) {
+    addLine('text-line--system', `> auto-approved (whitelisted): ${label}`);
+    const api = requireSpectraApi();
+    api.approveAction()
+      .then(() => {
+        runTerminalProposal(value, label);
+      })
+      .catch((error) => {
+        addLine('text-line--error', `ERROR> ${error instanceof Error ? error.message : String(error)}`);
+      });
+    return;
+  }
+  
   pendingApproval = { commandId, value, label };
-  addLine('text-line--system', `> approve ${label}? (y/n)`);
+  approvalMenuIndex = 0;
+  pendingNoInput = null;
+  addLine('text-line--system', `> approve ${label}`);
+  renderApprovalMenu();
   inputEl.value = '';
   hidePalette();
 };
@@ -778,24 +833,103 @@ const handleEmptyContinue = async () => {
   }
 };
 
-// 承認入力を処理する。
+// 承認メニュー行を削除する。
+const clearApprovalMenu = () => {
+  const existingMenu = document.querySelectorAll('.approval-menu-line');
+  existingMenu.forEach((el) => el.remove());
+};
+
+// No選択後の自由入力をLLMで処理する。
+const handleNoInputWithLLM = async (action, userInput) => {
+  const api = requireSpectraApi();
+  const avatarName = consoleConfig?.name_tags?.avatar || 'SPECTRA';
+  
+  addLine('text-line--user', `USER> ${userInput}`);
+  setTalking(true);
+  
+  try {
+    // Coreに承認拒否を通知
+    await api.rejectAction().catch(() => {}); // 既に拒否済みでもエラーを無視
+    
+    // ユーザー入力を送信
+    const data = await api.think(sessionId, userInput, 'dialogue');
+    setTalking(false);
+    
+    // 新しいコマンド提案があれば承認メニューを表示
+    if (data.intent === 'action' && data.proposal?.command) {
+      const label = data.proposal.summary || data.proposal.command;
+      requestApproval('__terminal__', data.proposal.command, label);
+      return;
+    }
+    
+    // 会話応答
+    if (data.response) {
+      addLine('text-line--assistant', `${avatarName}> ${data.response}`);
+    }
+    
+    // LLMが新しい提案をしなかった場合、承認を終了
+    // （ユーザーが「やめて」「別のことをやって」などと言った可能性）
+    updateMissionPane();
+    updateInspectorPane();
+  } catch (error) {
+    setTalking(false);
+    addLine('text-line--error', `ERROR> ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+// 承認メニューの選択を変更する。
+const moveApprovalSelection = (delta) => {
+  if (!pendingApproval || pendingNoInput) return;
+  approvalMenuIndex = (approvalMenuIndex + delta + APPROVAL_OPTIONS.length) % APPROVAL_OPTIONS.length;
+  renderApprovalMenu();
+};
+
+// 承認入力を処理する（Enterキー）。
 const handleApprovalInput = () => {
   if (!pendingApproval) {
     return false;
   }
-  const answer = inputEl.value.trim().toLowerCase();
-  if (answer !== 'y' && answer !== 'n') {
-    addLine('text-line--system', '> type y or n');
+  
+  // No選択後の自由入力モード
+  if (pendingNoInput) {
+    const userInput = inputEl.value.trim();
+    if (!userInput) {
+      return true; // 空入力は無視
+    }
+    const action = pendingNoInput;
+    pendingNoInput = null;
+    pendingApproval = null;
+    clearApprovalMenu();
     inputEl.value = '';
+    
+    // LLMに入力を処理させる
+    handleNoInputWithLLM(action, userInput);
     return true;
   }
+  
   const action = pendingApproval;
-  pendingApproval = null;
+  const selectedOption = APPROVAL_OPTIONS[approvalMenuIndex];
+  clearApprovalMenu();
   inputEl.value = '';
-  if (answer === 'n') {
-    addLine('text-line--system', `> canceled ${action.label}`);
+  
+  // No を選んだ場合は自由入力モードへ
+  if (selectedOption.key === 'n') {
+    pendingNoInput = action;
+    addLine('text-line--system', `> ${selectedOption.label}`);
+    addLine('text-line--system', '> Enter your instructions:');
     return true;
   }
+  
+  pendingApproval = null;
+  
+  // Always allow の場合、ホワイトリストに追加
+  if (selectedOption.key === 'a') {
+    addToApprovalWhitelist(action.value);
+    addLine('text-line--system', `> added to allowlist: ${action.value?.split(' ')[0] || action.label}`);
+  }
+  
+  addLine('text-line--system', `> ${selectedOption.label}`);
+  
   // 承認処理
   const api = requireSpectraApi();
 
@@ -1111,7 +1245,12 @@ if (inputEl) {
       // 承認待ちや継続待ちをキャンセル
       if (pendingApproval) {
         addLine('text-line--system', `> canceled ${pendingApproval.label}`);
+        clearApprovalMenu();
+        // Coreに承認拒否を通知
+        const api = requireSpectraApi();
+        api.rejectAction().catch(() => {});
         pendingApproval = null;
+        pendingNoInput = null;
       }
       openCommandPalette(value.slice(1));
       return;
@@ -1205,6 +1344,33 @@ if (inputEl) {
 
   // 矢印キーとESCで候補を操作する。
   inputEl.addEventListener('keydown', (event) => {
+    // 承認メニューの操作
+    if (pendingApproval && !pendingNoInput) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveApprovalSelection(1);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveApprovalSelection(-1);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        // ESCで承認をキャンセル
+        const action = pendingApproval;
+        pendingApproval = null;
+        clearApprovalMenu();
+        addLine('text-line--system', `> canceled ${action.label}`);
+        // Coreに承認拒否を通知
+        const api = requireSpectraApi();
+        api.rejectAction().catch(() => {});
+        return;
+      }
+    }
+    
+    // コマンドパレットの操作
     if (!commandState || commandState.type === 'value') {
       return;
     }
