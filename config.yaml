@@ -1,104 +1,107 @@
-# Avatar Agent Configuration
 avatar:
   name: SPECTRA
   fullname: Spectra Communicator
-
 user:
   name: USER
-
-# Avatar Space: アバターの生命活動空間
-# 優先順位: AVATAR_SPACE > この設定 > デフォルト(~/Avatar/space)
-# avatar_space: /path/to/space
-
+  language: en
 grok:
   model: grok-4-1-fast-non-reasoning
   temperature: 1.0
   daily_token_limit: 100000
-  # search_web / search_x: on | off
-  search_web: "on"
-  search_x: "on"
+  search_web: 'on'
+  search_x: 'on'
+system_prompt: '技術的で直接的なスタイルで簡潔に応答してください。
 
-system_prompt: |
-  技術的で直接的なスタイルで簡潔に応答してください。
   回答は短く要点を押さえたものにしてください。
+
   【重要】全年齢向けの内容のみ。暴力、性的、差別的な内容は絶対に避けてください。
 
+
   ## 実行環境
+
   - ターミナルで任意のシェルコマンドを実行できます。
+
   - 作業ディレクトリ: Avatar Space（AVATAR_SPACE または config.avatar_space）
+
   - ファイル操作（cat, echo, sed等）やgitコマンドが使えます。
+
   - アクション提案時は実行可能なコマンドを1行で提示してください。
+
   - 複雑な操作は単純なコマンドに分割してください。
 
+  '
 autonomous_loop:
-  # 結果をdialogueに出力（常にtrue推奨）
   notify_result: true
-  # 結果後のインターバル秒
   result_interval: 3.0
-
 goal_framework:
-  # 目的の完了判定: auto / manual
   purpose_completion: manual
-  # 目標の完了判定: auto / manual
   goal_completion: auto
-  # タスクの完了判定: auto / manual
   task_completion: auto
-
 console_ui:
   theme_color: '#00FF00'
   user_color: '#86FFE0'
   tool_color: '#FFFFFF'
   opacity: 0.75
-  # アバター発話エフェクト
   avatar_effect:
     enabled: true
-    char_delay_ms: 45      # 文字間隔
-    blip_freq_hz: 520      # 周波数
-    blip_duration_ms: 18   # 音の長さ
-    blip_volume: 0.04      # 音量
-    lip_sync_interval_ms: 90  # リップシンク切替間隔
+    char_delay_ms: 45
+    blip_freq_hz: 520
+    blip_duration_ms: 18
+    blip_volume: 0.04
+    lip_sync_interval_ms: 90
   brightness: 1.2
   glow_text: 1.0
   glow_box: 1.0
   avatar_overlay_opacity: 1.0
   avatar_brightness: 1.5
-  # name_tags は avatar/user から自動生成されるため省略
   system_messages:
     banner1: SYSTEM SPECTRA COMMAND ONLINE
     banner2: SESSION STANDBY
   command_palette:
     commands:
-      - id: model
-        label: /model
-        description: choose model
-      - id: temperature
-        label: /temperature
-        description: set temperature
-      - id: system_prompt
-        label: /system_prompt
-        description: edit system prompt
-      - id: retry
-        label: /retry
-        description: retry task by id (e.g., G4-T1)
-      - id: reset
-        label: /reset
-        description: reset all state (purpose, goals, tasks)
+    - id: model
+      label: /model
+      description: choose LLM model
+    - id: temperature
+      label: /temperature
+      description: set temperature
+    - id: system_prompt
+      label: /system_prompt
+      description: edit system prompt
+    - id: language
+      label: /language
+      description: set language (ja/en)
+    - id: retry
+      label: /retry
+      description: retry task by id (e.g., G4-T1)
+    - id: reset
+      label: /reset
+      description: reset all state (purpose, goals, tasks)
     options:
       model:
-        - grok-4-1-fast-non-reasoning
-        - grok-4-1
+      - grok-4-1-fast-non-reasoning
+      - grok-4-1
       temperature:
-        - 0.2
-        - 0.4
-        - 0.7
-        - 1.0
-        - 1.2
+      - 0.2
+      - 0.4
+      - 0.7
+      - 1.0
+      - 1.2
       system_prompt:
-        - label: default
-          value: |
-            技術的で直接的なスタイルで簡潔に応答してください。
-            回答は短く要点を押さえたものにしてください。
-            【重要】全年齢向けの内容のみ。暴力、性的、差別的な内容は絶対に避けてください。
-        - label: short
-          value: |
-            簡潔に要点だけを答えてください。
+      - label: default
+        value: '技術的で直接的なスタイルで簡潔に応答してください。
+
+          回答は短く要点を押さえたものにしてください。
+
+          【重要】全年齢向けの内容のみ。暴力、性的、差別的な内容は絶対に避けてください。
+
+          '
+      - label: short
+        value: '簡潔に要点だけを答えてください。
+
+          '
+      language:
+      - label: Japanese
+        value: ja
+      - label: English
+        value: en

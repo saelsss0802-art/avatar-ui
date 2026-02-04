@@ -11,6 +11,7 @@ import os
 import platform
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Optional
 
@@ -75,6 +76,22 @@ def _load_config() -> dict:
             raise RuntimeError(f"{section} section is missing in config")
     if "system_prompt" not in config:
         raise RuntimeError("system_prompt is missing in config")
+    # userセクションの必須キーを検証する。
+    user = config["user"]
+    if not isinstance(user, dict):
+        raise RuntimeError("user must be a mapping")
+    if "name" not in user:
+        raise RuntimeError("user.name is missing in config")
+    if "language" not in user:
+        raise RuntimeError("user.language is missing in config")
+    language = user.get("language")
+    if not isinstance(language, str):
+        raise RuntimeError("user.language must be a string")
+    language = language.strip().lower()
+    if language not in ("ja", "en"):
+        raise RuntimeError("user.language must be one of: ja, en")
+    user["language"] = language
+
     # grokセクションの必須キーを検証する。
     grok = config["grok"]
     if not isinstance(grok, dict):
@@ -99,6 +116,16 @@ def _load_config() -> dict:
 
 
 CONFIG = _load_config()
+
+
+def _get_language() -> str:
+    """ユーザー言語（ja/en）を返す。"""
+    return CONFIG.get("user", {}).get("language", "ja")
+
+
+def _msg(ja: str, en: str) -> str:
+    """言語に応じて固定文言を切り替える。"""
+    return en if _get_language() == "en" else ja
 
 # 起動時にstate.jsonを読み込む。
 STATE = load_state()
@@ -250,15 +277,7 @@ def _new_chat():
     return chat
 
 
-def _new_json_chat():
-    """JSON出力専用チャット（タスク/目標生成用）。"""
-    grok = CONFIG["grok"]
-    chat = _client.chat.create(
-        model=grok["model"],
-        temperature=float(grok["temperature"]),
-        response_format="json_object",
-    )
-    return chat
+# _new_json_chat() は廃止。単一セッションでJSON出力はプロンプトで強制する。
 
 
 class _SessionStore:
@@ -318,6 +337,21 @@ _loop_wake_event = threading.Event()  # ループを起こす用
 # ループ間隔（秒）。
 _LOOP_INTERVAL_DEFAULT = 3.0
 
+# LLMタイムアウト（秒）。
+_LLM_TIMEOUT = 30.0
+_llm_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="llm")
+
+
+def _sample_with_timeout(chat, timeout: float = _LLM_TIMEOUT):
+    """chat.sample()をタイムアウト付きで実行。タイムアウト時は例外を投げる。"""
+    future = _llm_executor.submit(chat.sample)
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        future.cancel()
+        raise TimeoutError(f"LLM response timed out after {timeout}s")
+
+
 def _get_loop_config():
     """自律ループ設定を取得する。"""
     loop_cfg = CONFIG.get("autonomous_loop", {})
@@ -374,6 +408,8 @@ def _cycle_step() -> float:
     pause_phases = {
         "approving",
         "executing",
+        "awaiting_continue",
+        "awaiting_purpose",
         "awaiting_purpose_confirm",
         "awaiting_purpose_type",
         "awaiting_goals_confirm",
@@ -439,16 +475,22 @@ def _ask_for_purpose() -> None:
     """purposeがないときにAvatarがdialogueで問いかける。一度だけ。"""
     # すでに問いかけ済みならスキップ。
     with _state_lock:
-        if STATE.get("thought", {}).get("judgment") == "purpose未設定":
+        action = STATE.get("action") or {}
+        if action.get("phase") == "awaiting_purpose":
             return
 
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
-    message = f"{avatar_name}> 目的が設定されていません。何を達成しましょうか？"
+    message = f"{avatar_name}> {_msg('目的が設定されていません。何を達成しましょうか？', 'Purpose is not set. What should we achieve?')}"
 
     with _state_lock:
+        update_action(STATE, "awaiting_purpose", "目的を待機中")
         update_thought(STATE, "purpose未設定", "ユーザーに問いかけ")
         save_state(STATE)
-    append_event("thought", judgment="purpose未設定", intent="ユーザーに問いかけ")
+    append_event(
+        "thought",
+        judgment=_msg("purpose未設定", "Purpose not set"),
+        intent=_msg("ユーザーに問いかけ", "Ask user"),
+    )
 
     # dialogueに出力（UIが取得する用のイベント）。
     append_event("output", pane="dialogue", text=message)
@@ -462,13 +504,17 @@ def _ask_for_purpose_type(purpose: str) -> None:
             return
 
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
-    message = f"{avatar_name}> 目的「{purpose}」は達成型ですか？ [y] 達成 / [n] 継続"
+    message = f"{avatar_name}> {_msg(f'目的「{purpose}」は達成型ですか？', f'Is the purpose \"{purpose}\" finite?')} [y] Achieve / [n] Continue"
 
     with _state_lock:
         update_action(STATE, "awaiting_purpose_type", f"目的タイプ確認: {purpose}")
         update_thought(STATE, "目的タイプ確認", f"目的: {purpose}")
         save_state(STATE)
-    append_event("thought", judgment="目的タイプ確認", intent="ユーザーに問いかけ")
+    append_event(
+        "thought",
+        judgment=_msg("目的タイプ確認", "Purpose type check"),
+        intent=_msg("ユーザーに問いかけ", "Ask user"),
+    )
     append_event("output", pane="dialogue", text=message)
 
 
@@ -484,7 +530,7 @@ def _handle_purpose_type_response(text: str, session_id: str) -> dict:
         purpose_type = "ongoing"
     else:
         return {
-            "response": "目的タイプは y/n で指定してください。",
+            "response": _msg("目的タイプは y/n で指定してください。", "Please answer with y/n."),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -502,7 +548,10 @@ def _handle_purpose_type_response(text: str, session_id: str) -> dict:
         save_state(STATE)
     _loop_wake_event.set()
     return {
-        "response": f"目的タイプを「{purpose_type}」に設定しました。",
+        "response": _msg(
+            f"目的タイプを「{purpose_type}」に設定しました。",
+            f"Purpose type set to \"{purpose_type}\".",
+        ),
         "source": "dialogue",
         "authority": "user",
         "session_id": session_id,
@@ -530,7 +579,10 @@ def _handle_purpose_confirm_response(text: str, session_id: str) -> dict:
             save_state(STATE)
         _loop_wake_event.set()
         return {
-            "response": f"目的「{purpose}」を達成しました。次の目的を設定しますか？",
+            "response": _msg(
+                f"目的「{purpose}」を達成しました。次の目的を設定しますか？",
+                f"Purpose \"{purpose}\" achieved. Set a new purpose?",
+            ),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -550,7 +602,10 @@ def _handle_purpose_confirm_response(text: str, session_id: str) -> dict:
         _propose_goals(purpose, STATE["mission"]["goals"])
         
         return {
-            "response": f"目的「{purpose}」の達成に向けて続行します。",
+            "response": _msg(
+                f"目的「{purpose}」の達成に向けて続行します。",
+                f"Continuing toward purpose \"{purpose}\".",
+            ),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -571,7 +626,10 @@ def _handle_purpose_confirm_response(text: str, session_id: str) -> dict:
             save_state(STATE)
         _loop_wake_event.set()
         return {
-            "response": f"新しい目的「{text.strip()}」を設定しました。",
+            "response": _msg(
+                f"新しい目的「{text.strip()}」を設定しました。",
+                f"New purpose set to \"{text.strip()}\".",
+            ),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -590,8 +648,16 @@ def _check_purpose_completion(purpose: str, completed_goals: list) -> float:
         update_action(STATE, "awaiting_purpose_confirm", f"目的達成確認: {purpose}")
         update_thought(STATE, "全目標完了", "目的達成を確認中")
         save_state(STATE)
-    append_event("output", pane="dialogue", text=f"{avatar_name}> 全ての目標が完了しました。目的「{purpose}」は達成されましたか？")
-    append_event("output", pane="dialogue", text=f"{avatar_name}> [y] 達成 / [n] 続行 / 新しい目的を入力")
+    append_event(
+        "output",
+        pane="dialogue",
+        text=f"{avatar_name}> {_msg(f'全ての目標が完了しました。目的「{purpose}」は達成されましたか？', f'All goals are complete. Has the purpose \"{purpose}\" been achieved?')}",
+    )
+    append_event(
+        "output",
+        pane="dialogue",
+        text=f"{avatar_name}> [y] Achieve / [n] Continue / {_msg('新しい目的を入力', 'Enter a new purpose')}",
+    )
     return _loop_interval_idle()
 
 
@@ -600,7 +666,7 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
 
     # 思考開始を出力
-    append_event("output", pane="dialogue", text=f"{avatar_name}> 目的について考えています...")
+    append_event("output", pane="dialogue", text=f"{avatar_name}> {_msg('目的について考えています...', 'Thinking about the purpose...')}")
 
     # 既存目標のコンテキストを構築
     existing_names = [g["name"] for g in existing_goals]
@@ -610,8 +676,8 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
 
     feedback_context = f"\nユーザーからの修正指示: {feedback}" if feedback else ""
     
-    # JSON出力専用チャットで生成（形式崩れを防止）
-    chat = _new_json_chat()
+    # 共有セッションでJSON出力（プロンプトで強制）
+    chat = _sessions.get_chat(_CORE_SESSION_ID)
     chat.append(user(
         "【目標生成タスク】\n"
         "以下の目的に対して、必要十分な目標群を提案してください。\n"
@@ -623,6 +689,7 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
         "- ファイル操作は作業ディレクトリ内のみ\n"
         "【出力形式】\n"
         "- 出力はJSONオブジェクト1つのみ（前後の説明やコードブロックは禁止）\n"
+        "- JSON以外のテキスト・マークダウン・コメントは一切禁止\n"
         "- ダブルクォートのみを使用し、キーは goals のみ\n"
         f"{existing_context}"
         f"{feedback_context}\n"
@@ -630,7 +697,7 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
         f"目的: {purpose}"
     ))
     try:
-        result = chat.sample()
+        result = _sample_with_timeout(chat)
         _track_usage(result)
         raw = getattr(result, "content", "")
         data = json.loads(raw)
@@ -650,8 +717,16 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
             )
             update_thought(STATE, "目標提案失敗", "ユーザーに再提案を求める")
             save_state(STATE)
-        append_event("output", pane="dialogue", text=f"{avatar_name}> 目標案の生成に失敗しました。")
-        append_event("output", pane="dialogue", text=f"{avatar_name}> [n] 再試行 / 修正内容を入力してください")
+        append_event(
+            "output",
+            pane="dialogue",
+            text=f"{avatar_name}> {_msg('目標案の生成に失敗しました。', 'Failed to generate goals.')}",
+        )
+        append_event(
+            "output",
+            pane="dialogue",
+            text=f"{avatar_name}> [n] {_msg('再試行', 'Retry')} / {_msg('修正内容を入力してください', 'Enter revisions')}",
+        )
         return False
 
     with _state_lock:
@@ -663,14 +738,18 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
         )
         update_thought(STATE, f"目標提案: {len(goals)}件", "ユーザー承認待ち")
         save_state(STATE)
-    append_event("thought", judgment=f"目標提案: {len(goals)}件", intent="ユーザー承認待ち")
+    append_event(
+        "thought",
+        judgment=_msg(f"目標提案: {len(goals)}件", f"Goals proposed: {len(goals)}"),
+        intent=_msg("ユーザー承認待ち", "Awaiting approval"),
+    )
 
     # 目標一覧を1つのメッセージにまとめて出力
     goal_list = "\n".join(f"  {idx}. {g['name']}" for idx, g in enumerate(goals, start=1))
     append_event(
         "output",
         pane="dialogue",
-        text=f"{avatar_name}> 目標案を提案します。\n{goal_list}\nこの目標群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力",
+        text=f"{avatar_name}> {_msg('目標案を提案します。', 'Proposed goals:')}\n{goal_list}\n{_msg('この目標群で進めますか？', 'Proceed with these goals?')} [y] {_msg('承認', 'Approve')} / [n] {_msg('再提案', 'Re-propose')} / {_msg('修正内容を入力', 'Enter revisions')}",
     )
     return True
 
@@ -686,7 +765,10 @@ def _handle_goals_confirm_response(text: str, session_id: str) -> dict:
     if text_lower in ("y", "yes", "はい"):
         if not proposed_goals:
             return {
-                "response": "目標案が空のため承認できません。修正内容を入力してください。",
+                "response": _msg(
+                    "目標案が空のため承認できません。修正内容を入力してください。",
+                    "Cannot approve because the goal list is empty. Enter revisions.",
+                ),
                 "source": "dialogue",
                 "authority": "user",
                 "session_id": session_id,
@@ -710,7 +792,7 @@ def _handle_goals_confirm_response(text: str, session_id: str) -> dict:
             save_state(STATE)
         _loop_wake_event.set()
         return {
-            "response": "目標を確定しました。",
+            "response": _msg("目標を確定しました。", "Goals confirmed."),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -729,7 +811,7 @@ def _handle_goals_confirm_response(text: str, session_id: str) -> dict:
         save_state(STATE)
     _propose_goals(STATE["mission"]["purpose"], STATE["mission"]["goals"], feedback=feedback)
     return {
-        "response": "目標案を再提案します。",
+        "response": _msg("目標案を再提案します。", "Re-proposing goals."),
         "source": "dialogue",
         "authority": "user",
         "session_id": session_id,
@@ -746,15 +828,19 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
     goal_id = goal.get("id", "G?")
     purpose = STATE.get("mission", {}).get("purpose") or ""
-    append_event("output", pane="dialogue", text=f"{avatar_name}> {goal_id}のタスクを考えています...")
+    append_event(
+        "output",
+        pane="dialogue",
+        text=f"{avatar_name}> {_msg(f'{goal_id}のタスクを考えています...', f'Thinking about tasks for {goal_id}...')}",
+    )
 
     completed_tasks = [t for t in existing_tasks if t.get("status") == "done"]
     completed_names = [t["name"] for t in completed_tasks]
     completed_context = f"\n完了済みタスク: {', '.join(completed_names)}" if completed_names else ""
     feedback_context = f"\nユーザーからの修正指示: {feedback}" if feedback else ""
 
-    # JSON出力専用チャットで生成（形式崩れを防止）
-    chat = _new_json_chat()
+    # 共有セッションでJSON出力（プロンプトで強制）
+    chat = _sessions.get_chat(_CORE_SESSION_ID)
     chat.append(user(
         "【タスク生成タスク】\n"
         "以下の目標に対して、必要十分なタスク群を提案してください。\n"
@@ -767,6 +853,7 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
         "- 完了済みタスクは繰り返さない\n"
         "【出力形式】\n"
         "- 出力はJSONオブジェクト1つのみ（前後の説明やコードブロックは禁止）\n"
+        "- JSON以外のテキスト・マークダウン・コメントは一切禁止\n"
         "- ダブルクォートのみを使用し、キーは tasks のみ\n"
         f"{completed_context}"
         f"{feedback_context}\n"
@@ -775,7 +862,7 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
         f"目標: {goal['name']}\nこの目標を達成するためのタスクを提案してください。"
     ))
     try:
-        result = chat.sample()
+        result = _sample_with_timeout(chat)
         _track_usage(result)
         raw = getattr(result, "content", "")
         data = json.loads(raw)
@@ -795,8 +882,16 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
             )
             update_thought(STATE, "タスク提案失敗", "ユーザーに再提案を求める")
             save_state(STATE)
-        append_event("output", pane="dialogue", text=f"{avatar_name}> タスク案の生成に失敗しました。")
-        append_event("output", pane="dialogue", text=f"{avatar_name}> [n] 再試行 / 修正内容を入力してください")
+        append_event(
+            "output",
+            pane="dialogue",
+            text=f"{avatar_name}> {_msg('タスク案の生成に失敗しました。', 'Failed to generate tasks.')}",
+        )
+        append_event(
+            "output",
+            pane="dialogue",
+            text=f"{avatar_name}> [n] {_msg('再試行', 'Retry')} / {_msg('修正内容を入力してください', 'Enter revisions')}",
+        )
         return False
 
     with _state_lock:
@@ -808,14 +903,18 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
         )
         update_thought(STATE, f"タスク提案: {len(tasks)}件", "ユーザー承認待ち")
         save_state(STATE)
-    append_event("thought", judgment=f"タスク提案: {len(tasks)}件", intent="ユーザー承認待ち")
+    append_event(
+        "thought",
+        judgment=_msg(f"タスク提案: {len(tasks)}件", f"Tasks proposed: {len(tasks)}"),
+        intent=_msg("ユーザー承認待ち", "Awaiting approval"),
+    )
 
     # タスク一覧を1つのメッセージにまとめて出力
     task_list = "\n".join(f"  {idx}. {t['name']}" for idx, t in enumerate(tasks, start=1))
     append_event(
         "output",
         pane="dialogue",
-        text=f"{avatar_name}> {goal_id}のタスク案を提案します。\n{task_list}\nこのタスク群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力",
+        text=f"{avatar_name}> {_msg(f'{goal_id}のタスク案を提案します。', f'Proposed tasks for {goal_id}:')}\n{task_list}\n{_msg('このタスク群で進めますか？', 'Proceed with these tasks?')} [y] {_msg('承認', 'Approve')} / [n] {_msg('再提案', 'Re-propose')} / {_msg('修正内容を入力', 'Enter revisions')}",
     )
     return True
 
@@ -832,7 +931,10 @@ def _handle_tasks_confirm_response(text: str, session_id: str) -> dict:
     if text_lower in ("y", "yes", "はい"):
         if not proposed_tasks:
             return {
-                "response": "タスク案が空のため承認できません。修正内容を入力してください。",
+                "response": _msg(
+                    "タスク案が空のため承認できません。修正内容を入力してください。",
+                    "Cannot approve because the task list is empty. Enter revisions.",
+                ),
                 "source": "dialogue",
                 "authority": "user",
                 "session_id": session_id,
@@ -866,7 +968,7 @@ def _handle_tasks_confirm_response(text: str, session_id: str) -> dict:
                 save_state(STATE)
         _loop_wake_event.set()
         return {
-            "response": "タスクを確定しました。",
+            "response": _msg("タスクを確定しました。", "Tasks confirmed."),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -887,7 +989,7 @@ def _handle_tasks_confirm_response(text: str, session_id: str) -> dict:
     if goal:
         _propose_tasks(goal, goal.get("tasks", []), feedback=feedback)
     return {
-        "response": "タスク案を再提案します。",
+        "response": _msg("タスク案を再提案します。", "Re-proposing tasks."),
         "source": "dialogue",
         "authority": "user",
         "session_id": session_id,
@@ -902,17 +1004,25 @@ def _handle_tasks_confirm_response(text: str, session_id: str) -> dict:
 def _prompt_goal_completion(goal: dict) -> None:
     """全タスク完了時に目標完了承認を求める。"""
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
+    goal_name = goal["name"]
     with _state_lock:
         update_action(
             STATE,
             "awaiting_goal_complete",
-            f"目標完了承認: {goal['name']}",
+            f"目標完了承認: {goal_name}",
             data={"goal_id": goal["id"]},
         )
         update_thought(STATE, "全タスク完了", "目標完了承認待ち")
         save_state(STATE)
-    append_event("output", pane="dialogue", text=f"{avatar_name}> 全てのタスクが完了しました。目標「{goal['name']}」は達成されましたか？")
-    append_event("output", pane="dialogue", text=f"{avatar_name}> [y] 達成 / [n] 続行")
+    append_event(
+        "output",
+        pane="dialogue",
+        text=(
+            f"{avatar_name}> "
+            f"{_msg(f'全てのタスクが完了しました。目標「{goal_name}」は達成されましたか？', f'All tasks are complete. Has the goal \"{goal_name}\" been achieved?')}"
+        ),
+    )
+    append_event("output", pane="dialogue", text=f"{avatar_name}> [y] Achieve / [n] Continue")
 
 
 def _handle_goal_complete_response(text: str, session_id: str) -> dict:
@@ -938,7 +1048,7 @@ def _handle_goal_complete_response(text: str, session_id: str) -> dict:
             save_state(STATE)
         _loop_wake_event.set()
         return {
-            "response": "目標を達成しました。",
+            "response": _msg("目標を達成しました。", "Goal achieved."),
             "source": "dialogue",
             "authority": "user",
             "session_id": session_id,
@@ -959,7 +1069,7 @@ def _handle_goal_complete_response(text: str, session_id: str) -> dict:
     if goal:
         _propose_tasks(goal, goal.get("tasks", []), feedback=feedback)
     return {
-        "response": "追加タスクを提案します。",
+        "response": _msg("追加タスクを提案します。", "Proposing additional tasks."),
         "source": "dialogue",
         "authority": "user",
         "session_id": session_id,
@@ -979,32 +1089,68 @@ def _execute_task(goal: dict, task: dict) -> float:
         update_task_status(STATE, task["id"], "active")
         save_state(STATE)
 
-    # JSON出力専用チャットで実行提案（形式崩れを防止）
-    chat = _new_json_chat()
+    # タスク実行は独立セッション（コンテキスト汚染防止）
+    grok = CONFIG["grok"]
+    chat = _client.chat.create(
+        model=grok["model"],
+        temperature=float(grok["temperature"]),
+        response_format="json_object",  # JSON保証
+    )
+    chat.append(system(_build_system_prompt()))
+    env_context = _build_env_context()
+    state_context = _build_state_context()
     chat.append(user(
+        f"{env_context}\n\n"
+        f"{state_context}\n\n"
         "【タスク実行】\n"
         "以下のタスクを実行するためのコマンドを提案してください。\n"
         "JSON形式で返してください: {\"command\": \"bashコマンド\", \"summary\": \"実行概要\"}\n"
         "会話だけで完了するタスクの場合は: {\"command\": null, \"summary\": \"完了理由\"}\n"
         "出力はJSONオブジェクト1つのみ（前後の説明やコードブロックは禁止）\n"
+        "JSON以外のテキスト・マークダウン・コメントは一切禁止\n"
         f"タスク: {task['name']}"
     ))
-    result = chat.sample()
+    try:
+        result = _sample_with_timeout(chat)
+    except Exception as exc:
+        error_summary = _msg(
+            "タスク実行に失敗しました。",
+            "Task execution failed.",
+        )
+        with _state_lock:
+            update_thought(STATE, "タスク実行失敗", str(exc))
+            update_result(STATE, "fail", f"{error_summary} {exc}")
+            update_action(STATE, "awaiting_continue", error_summary)
+            save_state(STATE)
+        append_event("output", pane="dialogue", text=f"ERROR> {error_summary} {exc}")
+        return _loop_interval_idle()
     _track_usage(result)
     raw = getattr(result, "content", "")
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # 形式崩れは即停止してユーザーに通知（fail-fast）
-        error_summary = "タスク実行のJSON出力が不正でした。"
-        with _state_lock:
-            update_thought(STATE, "タスク実行失敗", "JSON出力不正")
-            update_result(STATE, "fail", error_summary)
-            update_action(STATE, "awaiting_continue", error_summary)
-            save_state(STATE)
-        append_event("output", pane="dialogue", text=f"ERROR> {error_summary}")
-        return _loop_interval_idle()
+        # JSONパースエラー → 1回リトライ
+        print(f"[DEBUG] JSON parse error (1st). Raw: {raw[:300]}")
+        chat.append(user("上記の出力はJSONとして不正です。JSON形式のみで再出力してください。"))
+        try:
+            retry_result = _sample_with_timeout(chat)
+            _track_usage(retry_result)
+            raw = getattr(retry_result, "content", "")
+            data = json.loads(raw)
+        except Exception as retry_exc:
+            print(f"[DEBUG] JSON parse error (retry). Raw: {raw[:300]}, Exc: {retry_exc}")
+            error_summary = _msg(
+                "タスク実行のJSON出力が不正でした。",
+                "Task execution JSON output was invalid.",
+            )
+            with _state_lock:
+                update_thought(STATE, "タスク実行失敗", f"JSON出力不正: {raw[:100]}")
+                update_result(STATE, "fail", error_summary)
+                update_action(STATE, "awaiting_continue", error_summary)
+                save_state(STATE)
+            append_event("output", pane="dialogue", text=f"ERROR> {error_summary}")
+            return _loop_interval_idle()
 
     command = data.get("command")
     summary = data.get("summary", task["name"])
@@ -1021,13 +1167,17 @@ def _execute_task(goal: dict, task: dict) -> float:
         save_state(STATE)
 
     if command:
-        append_event("thought", judgment=f"タスク: {task['name']}", intent=f"承認待ち: {summary}")
+        append_event(
+            "thought",
+            judgment=_msg(f"タスク: {task['name']}", f"Task: {task['name']}"),
+            intent=_msg(f"承認待ち: {summary}", f"Awaiting approval: {summary}"),
+        )
         return _loop_interval_idle()
     else:
         append_event("result", status="done", summary=summary)
         # 結果をdialogueに出力
         if loop_cfg["notify_result"]:
-            append_event("output", pane="dialogue", text=f"✓ 完了: {summary}")
+            append_event("output", pane="dialogue", text=f"✓ Done: {summary}")
         # 会話タスク完了後は常に自動続行
         return _loop_interval_result()
 
@@ -1075,6 +1225,7 @@ class AdminConfigUpdate(BaseModel):
     model: Optional[str] = None
     temperature: Optional[float] = None
     system_prompt: Optional[str] = None
+    language: Optional[str] = None
 
 
 class ObservationRequest(BaseModel):
@@ -1103,6 +1254,8 @@ def think_core(source: str, text: str, session_id: str) -> dict:
     全てのチャネルはこの関数を経由する。
     """
     authority = _get_authority(source)
+    if not _loop_running:
+        start_loop()
 
     # 承認待ちの場合、ユーザー入力を処理（ロック外でチェック）
     with _state_lock:
@@ -1136,7 +1289,10 @@ def think_core(source: str, text: str, session_id: str) -> dict:
                     save_state(STATE)
                 _loop_wake_event.set()
                 return {
-                    "response": f"目的「{purpose}」を完了しました。",
+                    "response": _msg(
+                        f"目的「{purpose}」を完了しました。",
+                        f"Purpose \"{purpose}\" completed.",
+                    ),
                     "source": "dialogue",
                     "authority": "user",
                     "session_id": session_id,
@@ -1154,6 +1310,7 @@ def think_core(source: str, text: str, session_id: str) -> dict:
         purpose_was_empty = not STATE["mission"]["purpose"]
         if purpose_was_empty and source == "dialogue":
             set_purpose(STATE, text)
+            clear_action(STATE)  # awaiting_purposeをクリア
             update_thought(STATE, "purpose設定", f"目的: {text}")
         save_state(STATE)
     append_event("input", source=source, text=text)
@@ -1163,7 +1320,10 @@ def think_core(source: str, text: str, session_id: str) -> dict:
         avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
         _loop_wake_event.set()  # ループを起こして目的タイプ質問を発動
         return {
-            "response": f"目的を「{text}」に設定しました。",
+            "response": _msg(
+                f"目的を「{text}」に設定しました。",
+                f"Purpose set to \"{text}\".",
+            ),
             "source": source,
             "authority": authority,
             "session_id": session_id,
@@ -1178,7 +1338,7 @@ def think_core(source: str, text: str, session_id: str) -> dict:
     # 状態コンテキストを付加してLLMに渡す
     context = _build_state_context()
     chat.append(user(f"{context}\n\n{text}"))
-    response = chat.sample()
+    response = _sample_with_timeout(chat)
     _track_usage(response)
 
     # 応答本文とレスポンスIDは必須。欠落時は即エラーにする。
@@ -1194,8 +1354,19 @@ def think_core(source: str, text: str, session_id: str) -> dict:
     needs_approval = intent_info["intent"] == "action"
 
     # 思考状態を更新し、イベントを記録する。
-    judgment = f"入力: {text[:50]}..." if len(text) > 50 else f"入力: {text}"
-    intent = "会話応答" if intent_info["intent"] == "conversation" else f"実行: {intent_info['proposal']['summary'] if intent_info.get('proposal') else '不明'}"
+    judgment = (
+        _msg(f"入力: {text[:50]}...", f"Input: {text[:50]}...")
+        if len(text) > 50
+        else _msg(f"入力: {text}", f"Input: {text}")
+    )
+    intent = (
+        _msg("会話応答", "Conversation response")
+        if intent_info["intent"] == "conversation"
+        else _msg(
+            f"実行: {intent_info['proposal']['summary'] if intent_info.get('proposal') else '不明'}",
+            f"Action: {intent_info['proposal']['summary'] if intent_info.get('proposal') else 'unknown'}",
+        )
+    )
     with _state_lock:
         update_thought(STATE, judgment, intent)
         # 行動が必要な場合は承認待ち状態にする
@@ -1286,6 +1457,12 @@ def handle_unexpected_error(request: Request, exc: Exception):
     )
 
 
+def _ensure_loop_running() -> None:
+    """自律ループが停止していたら再起動する。"""
+    if not _loop_running:
+        start_loop()
+
+
 @app.on_event("startup")
 def on_startup():
     """起動時に自律ループを開始する。"""
@@ -1361,6 +1538,7 @@ def console_config(request: Request):
         "avatar_fullname": CONFIG["avatar"]["fullname"],
         "user": CONFIG["user"]["name"],
     }
+    ui["language"] = CONFIG["user"]["language"]
     return {"console_ui": ui}
 
 
@@ -1373,6 +1551,7 @@ def admin_config(request: Request):
         "model": grok["model"],
         "temperature": grok["temperature"],
         "system_prompt": CONFIG["system_prompt"],
+        "language": CONFIG["user"]["language"],
     }
 
 
@@ -1380,6 +1559,7 @@ def admin_config(request: Request):
 def get_state(request: Request):
     # 現在の状態を返す。
     _check_api_key(request)
+    _ensure_loop_running()
     with _state_lock:
         return copy.deepcopy(STATE)
 
@@ -1388,6 +1568,7 @@ def get_state(request: Request):
 def get_recent_events(request: Request, after: str = None, limit: int = 20):
     """最近のイベントを取得する。afterで指定した時刻以降のイベントのみ返す。"""
     _check_api_key(request)
+    _ensure_loop_running()
     events = []
     events_file = Path(__file__).resolve().parent.parent / "data" / "events.jsonl"
     if not events_file.exists():
@@ -1650,7 +1831,7 @@ def _mark_active_task(status: str) -> None:
 def admin_config_update(payload: AdminConfigUpdate, request: Request):
     # 管理者向けに設定を更新し、反映する。
     _check_api_key(request)
-    updates = payload.model, payload.temperature, payload.system_prompt
+    updates = payload.model, payload.temperature, payload.system_prompt, payload.language
     if all(value is None for value in updates):
         raise HTTPException(status_code=400, detail="No config values provided")
 
@@ -1667,6 +1848,13 @@ def admin_config_update(payload: AdminConfigUpdate, request: Request):
         if not payload.system_prompt.strip():
             raise HTTPException(status_code=400, detail="system_prompt is empty")
         updated["system_prompt"] = payload.system_prompt.strip()
+    if payload.language is not None:
+        if not payload.language.strip():
+            raise HTTPException(status_code=400, detail="language is empty")
+        language = payload.language.strip().lower()
+        if language not in ("ja", "en"):
+            raise HTTPException(status_code=400, detail="language must be one of: ja, en")
+        updated["user"]["language"] = language
 
     _save_config(updated)
     CONFIG.clear()
@@ -1677,6 +1865,7 @@ def admin_config_update(payload: AdminConfigUpdate, request: Request):
         "model": grok["model"],
         "temperature": grok["temperature"],
         "system_prompt": CONFIG["system_prompt"],
+        "language": CONFIG["user"]["language"],
     }
 
 
@@ -1722,7 +1911,7 @@ def admin_observation(payload: ObservationRequest, request: Request):
 - 失敗: failed: [失敗理由]
 """
     chat.append(user(verify_prompt))
-    response = chat.sample()
+    response = _sample_with_timeout(chat)
     _track_usage(response)
     
     response_text = (getattr(response, "content", "") or "").strip()

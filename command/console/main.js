@@ -262,6 +262,9 @@ let approvalMenuIndex = 0; // 承認メニューの選択インデックス (0=Y
 let pendingNoInput = null; // No選択後の自由入力モード
 let terminalCapture = null;
 
+const getLanguage = () => consoleConfig?.language || 'ja';
+const t = (ja, en) => (getLanguage() === 'en' ? en : ja);
+
 const requireSpectraApi = () => {
   if (!window.spectraApi) {
     failFast('spectraApi is not available');
@@ -804,6 +807,8 @@ const setupTerminal = () => {
 
   // ANSIエスケープを除去して読みやすくする。
   const stripAnsi = (value) => value.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').replace(/\u001b\][^\u0007]*\u0007/g, '');
+  // 制御文字（バックスペース等）を除去して検証精度を上げる。
+  const stripControlChars = (value) => value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 
   // ターミナル実行の出力を一定時間だけ集めて確認する。
   const runCommand = (command) => {
@@ -833,11 +838,11 @@ const setupTerminal = () => {
   // 提案されたターミナル操作を実行し、結果をコアに渡す。
   // 成功/失敗はLLMによる差分検証で判定（終了コード不使用）。
   window.runTerminalCommand = (command, label) => {
-    addLine('text-line--system', `> run ${label}`);
+    addLine('text-line--system', `> run: ${label}`);
     const api = requireSpectraApi();
     runCommand(command)
       .then((result) => {
-        const cleaned = stripAnsi(result.buffer).replace(/\r/g, '').trimEnd();
+        const cleaned = stripControlChars(stripAnsi(result.buffer)).replace(/\r/g, '').trimEnd();
         const suffix = result.truncated ? '\n... (truncated)' : '';
         const output = cleaned + suffix;
         if (output.trim()) {
@@ -857,15 +862,24 @@ const setupTerminal = () => {
       .then((verifyResult) => {
         // Core側で差分検証した結果を受け取る
         const success = verifyResult?.success !== false;
-        const message = verifyResult?.message || `done: ${label}`;
-        return api.completeAction({ success, summary: message }).then((result) => ({
-          message,
+        const rawMessage = verifyResult?.message || `done: ${label}`;
+        let summary = rawMessage;
+        const lower = rawMessage.toLowerCase();
+        if (lower.startsWith('done:')) {
+          summary = rawMessage.slice(5).trim();
+        } else if (lower.startsWith('failed:')) {
+          summary = rawMessage.slice(7).trim();
+        }
+        if (!summary) summary = label;
+        return api.completeAction({ success, summary }).then((result) => ({
+          success,
+          summary,
           nextAction: result?.action,
         }));
       })
-      .then(({ message, nextAction }) => {
-        // LLMの出力（done:/failed:）をそのまま表示
-        addLine('text-line--system', `> ${message}`);
+      .then(({ success, summary, nextAction }) => {
+        const prefix = success ? '✓ Done' : '✗ Failed';
+        addLine('text-line--system', `${prefix}: ${summary}`);
         // ペインを更新
         updateMissionPane();
         updateInspectorPane();
@@ -975,7 +989,7 @@ const requestApproval = (commandId, value, label) => {
   pendingApproval = { commandId, value, label };
   approvalMenuIndex = 0;
   pendingNoInput = null;
-  addLine('text-line--system', `> approve ${label}`);
+    addLine('text-line--system', `> approve: ${label}`);
   renderApprovalMenu();
   inputEl.value = '';
   hidePalette();
@@ -989,7 +1003,7 @@ const handleEmptyContinue = async () => {
     if (state?.action?.phase === 'awaiting_continue') {
       api.continueLoop()
         .then(() => {
-          addLine('text-line--system', '> 続行');
+          addLine('text-line--system', `> ${t('続行', 'Continue')}`);
           updateMissionPane();
           updateInspectorPane();
         })
@@ -1106,7 +1120,7 @@ const handleApprovalInput = () => {
   if (action.commandId === '__reset__') {
     api.resetState()
       .then(() => {
-        addLine('text-line--system', '> 状態がリセットされました');
+        addLine('text-line--system', `> ${t('状態がリセットされました', 'State reset.')}`);
         updateMissionPane();
         updateInspectorPane();
         inputEl.focus();
@@ -1121,7 +1135,7 @@ const handleApprovalInput = () => {
   if (action.commandId === '__continue__') {
     api.continueLoop()
       .then(() => {
-        addLine('text-line--system', '> 続行');
+        addLine('text-line--system', `> ${t('続行', 'Continue')}`);
         updateMissionPane();
         updateInspectorPane();
         inputEl.focus();
@@ -1174,7 +1188,11 @@ const openCommandPalette = (filterText) => {
 const openCommandOptions = (commandId) => {
   // /reset は特別処理: 警告を出して確認を求める
   if (commandId === 'reset') {
-    requestApproval('__reset__', null, '⚠️ 全ての状態（目的・目標・タスク）をリセット');
+    requestApproval(
+      '__reset__',
+      null,
+      t('⚠️ 全ての状態（目的・目標・タスク）をリセット', '⚠️ Reset all state (purpose, goals, tasks)'),
+    );
     resetCommandState();
     return;
   }
@@ -1220,7 +1238,110 @@ const applyAdminUpdate = (commandId, value) => {
   const payload = { [commandId]: value };
   return api.updateAdminConfig(payload).then((updated) => {
     adminConfig = updated;
+    if (updated?.language && consoleConfig) {
+      consoleConfig.language = updated.language;
+    }
+    if (commandId === 'language' && api.getState) {
+      api.getState().then((state) => {
+        renderStatePrompt(state);
+      }).catch(() => {});
+    }
   });
+};
+
+const renderStatePrompt = (state) => {
+  if (!state || !consoleConfig?.name_tags?.avatar) {
+    return;
+  }
+  const purpose = state?.mission?.purpose;
+  const judgment = state?.thought?.judgment;
+  const action = state?.action;
+  const avatarName = consoleConfig.name_tags.avatar || 'SPECTRA';
+
+  // 承認待ち → 承認プロンプトを再表示
+  if (action?.phase === 'approving' && action?.command && !pendingApproval) {
+    requestApproval('__terminal__', action.command, action.summary || action.command);
+    return;
+  }
+
+  // 続行待ち → [Enter] で続行を再表示
+  if (action?.phase === 'awaiting_continue') {
+    const label = action.summary || t('タスク完了', 'Task complete');
+    addLine('text-line--system', `> ${label} ${t('[Enter] で続行', '[Enter] to continue')}`);
+    return;
+  }
+
+  // 目的確認待ち → 確認プロンプトを再表示
+  if (action?.phase === 'awaiting_purpose_confirm') {
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t(
+        `全ての目標が完了しました。目的「${purpose}」は達成されましたか？`,
+        `All goals are complete. Has the purpose "${purpose}" been achieved?`,
+      )}`,
+    );
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> [y] Achieve / [n] Continue / ${t('新しい目的を入力', 'Enter a new purpose')}`,
+    );
+    return;
+  }
+
+  // 目的タイプ確認待ち → 再表示
+  if (action?.phase === 'awaiting_purpose_type') {
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t(`目的「${purpose}」は達成型ですか？`, `Is the purpose "${purpose}" finite?`)}`,
+    );
+    addLine('text-line--avatar', `${avatarName}> [y] Achieve / [n] Continue`);
+    return;
+  }
+
+  // Goal候補承認待ち → 再表示
+  if (action?.phase === 'awaiting_goals_confirm') {
+    const goals = action?.data?.goals || [];
+    const goalList = goals.map((g, i) => `  ${i + 1}. ${g.name}`).join('\n');
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t('目標案を提案します。', 'Proposed goals:')}\n${goalList}\n${t('この目標群で進めますか？', 'Proceed with these goals?')} [y] ${t('承認', 'Approve')} / [n] ${t('再提案', 'Re-propose')} / ${t('修正内容を入力', 'Enter revisions')}`,
+    );
+    return;
+  }
+
+  // Task候補承認待ち → 再表示
+  if (action?.phase === 'awaiting_tasks_confirm') {
+    const tasks = action?.data?.tasks || [];
+    const taskList = tasks.map((t, i) => `  ${i + 1}. ${t.name}`).join('\n');
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t('タスク案を提案します。', 'Proposed tasks:')}\n${taskList}\n${t('このタスク群で進めますか？', 'Proceed with these tasks?')} [y] ${t('承認', 'Approve')} / [n] ${t('再提案', 'Re-propose')} / ${t('修正内容を入力', 'Enter revisions')}`,
+    );
+    return;
+  }
+
+  // 目標完了承認待ち → 再表示
+  if (action?.phase === 'awaiting_goal_complete') {
+    const goalId = action?.data?.goal_id;
+    const goal = state?.mission?.goals?.find((g) => g.id === goalId);
+    const goalName = goal?.name || action?.summary || t('目標', 'Goal');
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t(
+        `全てのタスクが完了しました。目標「${goalName}」は達成されましたか？`,
+        `All tasks are complete. Has the goal "${goalName}" been achieved?`,
+      )}`,
+    );
+    addLine('text-line--avatar', `${avatarName}> [y] Achieve / [n] Continue`);
+    return;
+  }
+
+  // purpose未設定 → 問いかけを表示
+  if (!purpose && (judgment === 'purpose未設定' || judgment === 'Purpose not set')) {
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t('目的が設定されていません。何を達成しましょうか？', 'Purpose is not set. What should we achieve?')}`,
+    );
+  }
 };
 
 // 初期化はfail-fastで行う（欠落や不整合は即停止）。
@@ -1239,68 +1360,7 @@ try {
       // 起動時に現在の状態に応じたプロンプトを再表示
       const api = requireSpectraApi();
       api.getState().then((state) => {
-        const purpose = state?.mission?.purpose;
-        const judgment = state?.thought?.judgment;
-        const action = state?.action;
-        const avatarName = data?.avatar?.name || 'SPECTRA';
-
-        // 承認待ち → 承認プロンプトを再表示
-        if (action?.phase === 'approving' && action?.command && !pendingApproval) {
-          requestApproval('__terminal__', action.command, action.summary || action.command);
-          return;
-        }
-
-        // 継続待ち → [Enter] で続行を再表示
-        if (action?.phase === 'awaiting_continue') {
-          const label = action.summary || 'タスク完了';
-          addLine('text-line--system', `> ${label} [Enter] で続行`);
-          return;
-        }
-
-        // 目的確認待ち → 確認プロンプトを再表示
-        if (action?.phase === 'awaiting_purpose_confirm') {
-          addLine('text-line--avatar', `${avatarName}> 全ての目標が完了しました。目的「${purpose}」は達成されましたか？`);
-          addLine('text-line--avatar', `${avatarName}> [y] 達成 / [n] 続行 / 新しい目的を入力`);
-          return;
-        }
-
-        // 目的タイプ確認待ち → 再表示
-        if (action?.phase === 'awaiting_purpose_type') {
-          addLine('text-line--avatar', `${avatarName}> 目的「${purpose}」は達成型ですか？`);
-          addLine('text-line--avatar', `${avatarName}> [y] 達成 / [n] 継続`);
-          return;
-        }
-
-        // Goal候補承認待ち → 再表示
-        if (action?.phase === 'awaiting_goals_confirm') {
-          const goals = action?.data?.goals || [];
-          const goalList = goals.map((g, i) => `  ${i + 1}. ${g.name}`).join('\n');
-          addLine('text-line--avatar', `${avatarName}> 目標案を提案します。\n${goalList}\nこの目標群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力`);
-          return;
-        }
-
-        // Task候補承認待ち → 再表示
-        if (action?.phase === 'awaiting_tasks_confirm') {
-          const tasks = action?.data?.tasks || [];
-          const taskList = tasks.map((t, i) => `  ${i + 1}. ${t.name}`).join('\n');
-          addLine('text-line--avatar', `${avatarName}> タスク案を提案します。\n${taskList}\nこのタスク群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力`);
-          return;
-        }
-
-        // 目標完了承認待ち → 再表示
-        if (action?.phase === 'awaiting_goal_complete') {
-          const goalId = action?.data?.goal_id;
-          const goal = state?.mission?.goals?.find((g) => g.id === goalId);
-          const goalName = goal?.name || action?.summary || '目標';
-          addLine('text-line--avatar', `${avatarName}> 全てのタスクが完了しました。目標「${goalName}」は達成されましたか？`);
-          addLine('text-line--avatar', `${avatarName}> [y] 達成 / [n] 続行`);
-          return;
-        }
-
-        // purpose未設定 → 問いかけを表示
-        if (!purpose && judgment === 'purpose未設定') {
-          addLine('text-line--avatar', `${avatarName}> 目的が設定されていません。何を達成しましょうか？`);
-        }
+        renderStatePrompt(state);
       }).catch(() => {});
       // イベントポーリング開始（3秒間隔）
       setInterval(pollEvents, 3000);
@@ -1341,7 +1401,7 @@ if (inputEl) {
           resetCommandState();
           inputEl.value = '';
           inputEl.focus();
-          addLine('text-line--system', `> updated ${item.commandId}`);
+          addLine('text-line--system', `> updated: ${item.commandId}`);
         })
         .catch((error) => {
           failFast(error instanceof Error ? error.message : String(error));
@@ -1385,7 +1445,7 @@ const confirmValueInput = () => {
         resetCommandState();
         inputEl.value = '';
         inputEl.focus();
-        addLine('text-line--system', `> retry ${value}`);
+        addLine('text-line--system', `> retry: ${value}`);
         updateMissionPane();
         updateInspectorPane();
       })
@@ -1399,7 +1459,7 @@ const confirmValueInput = () => {
       resetCommandState();
       inputEl.value = '';
       inputEl.focus();
-      addLine('text-line--system', `> updated ${commandState.commandId}`);
+    addLine('text-line--system', `> updated: ${commandState.commandId}`);
     })
     .catch((error) => {
       failFast(error instanceof Error ? error.message : String(error));
@@ -1430,7 +1490,7 @@ const confirmValueInput = () => {
     if (value.startsWith('/')) {
       // 承認待ちや継続待ちをキャンセル
       if (pendingApproval) {
-        addLine('text-line--system', `> canceled ${pendingApproval.label}`);
+        addLine('text-line--system', `> canceled: ${pendingApproval.label}`);
         clearApprovalMenu();
         // Coreに承認拒否を通知
         const api = requireSpectraApi();
@@ -1548,7 +1608,7 @@ const confirmValueInput = () => {
         const action = pendingApproval;
         pendingApproval = null;
         clearApprovalMenu();
-        addLine('text-line--system', `> canceled ${action.label}`);
+        addLine('text-line--system', `> canceled: ${action.label}`);
         // Coreに承認拒否を通知
         const api = requireSpectraApi();
         api.rejectAction().catch(() => {});
