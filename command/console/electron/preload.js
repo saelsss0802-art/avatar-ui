@@ -235,6 +235,25 @@ const completeAction = async (payload = {}) => {
   return data;
 };
 
+// Core にタスク再試行を通知する。
+const retryTask = async (payload) => {
+  const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
+  const response = await fetch(`${baseUrl}/admin/retry`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const message = data?.detail ?? response.statusText;
+    throw new Error(message);
+  }
+  return data;
+};
+
 // Core の状態をリセットする。
 const resetState = async () => {
   const baseUrl = apiUrl.replace(/\/v1\/think$/, '');
@@ -341,6 +360,7 @@ contextBridge.exposeInMainWorld('spectraApi', {
   approveAction,
   rejectAction,
   completeAction,
+  retryTask,
   resetState,
   continueLoop,
   getHealth,

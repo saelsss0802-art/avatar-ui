@@ -545,6 +545,8 @@ body.is-resizing-vertical {
   color: var(--col-tool-text);
   font-style: italic;
 }
+.text-line-label { color: var(--col-theme-main); }
+.text-line-body { white-space: pre-wrap; }
 
 /* 入力エリア。 */
 #pane-input {

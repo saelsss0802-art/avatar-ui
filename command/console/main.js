@@ -38,6 +38,16 @@ if (!storedSessionId) {
 const runId = crypto.randomUUID();
 let consoleLogSeq = 0;
 
+// アバターエフェクト設定（configから読み込み、デフォルト値付き）
+let avatarEffect = {
+  enabled: true,
+  charDelayMs: 25,
+  blipFreqHz: 880,
+  blipDurationMs: 25,
+  blipVolume: 0.03,
+  lipSyncIntervalMs: 80,
+};
+
 inputEl.disabled = true;
 
 const getConsoleKind = (className) => {
@@ -74,19 +84,166 @@ const logConsoleLine = (className, text) => {
   logConsoleEntry({ kind: getConsoleKind(className), text, pane: 'dialogue' });
 };
 
+let manualTalking = false;
+let lipSyncActive = false;
+let lipSyncOn = false;
+let lipSyncTimer = null;
+let isStreaming = false;
+let streamQueue = [];
+let audioContext = null;
+
+const applyTalkingState = () => {
+  const shouldTalk = manualTalking || (lipSyncActive && lipSyncOn);
+  avatarImg.src = shouldTalk ? talkSrc : idleSrc;
+};
+
+const setTalking = (isTalking) => {
+  manualTalking = Boolean(isTalking);
+  applyTalkingState();
+};
+
+const scheduleLipSync = () => {
+  if (!lipSyncActive) return;
+  lipSyncOn = !lipSyncOn;
+  applyTalkingState();
+  lipSyncTimer = window.setTimeout(scheduleLipSync, avatarEffect.lipSyncIntervalMs);
+};
+
+const startLipSync = () => {
+  if (lipSyncActive) {
+    return;
+  }
+  lipSyncActive = true;
+  if (lipSyncTimer) {
+    window.clearTimeout(lipSyncTimer);
+    lipSyncTimer = null;
+  }
+  scheduleLipSync();
+};
+
+const stopLipSync = () => {
+  lipSyncActive = false;
+  if (lipSyncTimer) {
+    window.clearTimeout(lipSyncTimer);
+    lipSyncTimer = null;
+  }
+  lipSyncOn = false;
+  applyTalkingState();
+};
+
+const initAudioContext = () => {
+  if (audioContext) {
+    return audioContext;
+  }
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    return null;
+  }
+  audioContext = new AudioCtx();
+  return audioContext;
+};
+
+const playBlip = () => {
+  if (!avatarEffect.enabled) return;
+  const ctx = initAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = avatarEffect.blipFreqHz;
+  osc.connect(gain).connect(ctx.destination);
+  
+  const t = ctx.currentTime;
+  const dur = avatarEffect.blipDurationMs / 1000;
+  const vol = avatarEffect.blipVolume;
+  // 軽いフェードアウトで「ポッ」感を出す
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t);
+  osc.stop(t + dur + 0.01);
+};
+
+const splitLabel = (text) => {
+  if (!text) {
+    return { label: '', body: '' };
+  }
+  const match = /^([^\s>]{1,32}>)(\s?)(.*)$/.exec(text);
+  if (!match) {
+    return { label: '', body: text };
+  }
+  const label = `${match[1]}${match[2] || ''}`;
+  return { label, body: match[3] || '' };
+};
+
+const streamText = (targetEl, text) => new Promise((resolve) => {
+  if (!text) { resolve(); return; }
+  let i = 0;
+  const step = () => {
+    if (i >= text.length) { resolve(); return; }
+    const char = text.charAt(i++);
+    targetEl.textContent += char;
+    outputEl.scrollTop = outputEl.scrollHeight;
+    if (!/\s/.test(char)) playBlip();
+    window.setTimeout(step, avatarEffect.charDelayMs);
+  };
+  step();
+});
+
+const processStreamQueue = async () => {
+  if (isStreaming) {
+    return;
+  }
+  isStreaming = true;
+  startLipSync();
+  while (streamQueue.length > 0) {
+    const { targetEl, text } = streamQueue.shift();
+    await streamText(targetEl, text);
+  }
+  stopLipSync();
+  isStreaming = false;
+  if (streamQueue.length > 0) {
+    processStreamQueue();
+  }
+};
+
+const enqueueStream = (targetEl, text) => {
+  if (!targetEl || !text) {
+    return;
+  }
+  streamQueue.push({ targetEl, text });
+  processStreamQueue();
+};
+
 // 画面に1行追加し、自動でスクロールする。
 const addLine = (className, text) => {
   const line = document.createElement('div');
   line.className = `text-line ${className}`.trim();
-  line.textContent = text;
-  outputEl.appendChild(line);
-  outputEl.scrollTop = outputEl.scrollHeight;
   logConsoleLine(className, text);
-};
 
-// 応答中だけアバター画像を切り替える。
-const setTalking = (isTalking) => {
-  avatarImg.src = isTalking ? talkSrc : idleSrc;
+  const isAvatarLine = className?.includes('text-line--avatar') || className?.includes('text-line--assistant');
+  if (isAvatarLine) {
+    const { label, body } = splitLabel(text);
+    if (label) {
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'text-line-label';
+      labelSpan.textContent = label;
+      line.appendChild(labelSpan);
+    }
+    const bodySpan = document.createElement('span');
+    bodySpan.className = 'text-line-body';
+    line.appendChild(bodySpan);
+    outputEl.appendChild(line);
+    outputEl.scrollTop = outputEl.scrollHeight;
+    if (body) {
+      enqueueStream(bodySpan, body);
+    }
+  } else {
+    line.textContent = text;
+    outputEl.appendChild(line);
+    outputEl.scrollTop = outputEl.scrollHeight;
+  }
 };
 
 const failFast = (message) => {
@@ -228,6 +385,17 @@ const applyConsoleConfig = (data) => {
   if (!ui.command_palette?.commands || !ui.command_palette?.options) {
     failFast('console_ui.command_palette is missing.');
   }
+
+  // アバターエフェクト設定をconfigから読み込み
+  const eff = ui.avatar_effect || {};
+  avatarEffect = {
+    enabled: eff.enabled !== false,
+    charDelayMs: eff.char_delay_ms ?? 25,
+    blipFreqHz: eff.blip_freq_hz ?? 880,
+    blipDurationMs: eff.blip_duration_ms ?? 25,
+    blipVolume: eff.blip_volume ?? 0.03,
+    lipSyncIntervalMs: eff.lip_sync_interval_ms ?? 80,
+  };
 
   consoleConfig = ui;
 };
@@ -544,10 +712,10 @@ const updateVitalsPane = async () => {
       vitalsCpuBarEl.style.width = `${sysInfo.cpu.value}%`;
     }
     
-    // メモリ
+    // メモリ（単位はAPIから取得）
     if (vitalsMemoryEl && vitalsMemoryBarEl && sysInfo?.memory) {
       const percent = Math.round((sysInfo.memory.value / sysInfo.memory.max) * 100);
-      vitalsMemoryEl.textContent = `${sysInfo.memory.value}GB`;
+      vitalsMemoryEl.textContent = `${sysInfo.memory.value}${sysInfo.memory.unit}`;
       vitalsMemoryBarEl.style.width = `${percent}%`;
     }
     
@@ -707,7 +875,7 @@ const setupTerminal = () => {
         }
       })
       .catch((error) => {
-        // 失敗時も完了通知を送る。
+        // 失敗時も完了通知を送る（ベストエフォート）。
         api.completeAction({ success: false, summary: error.message }).catch(() => {});
         failFast(error instanceof Error ? error.message : String(error));
       });
@@ -761,6 +929,7 @@ const renderPalette = (items, activeIndex) => {
 const resetCommandState = () => {
   commandState = null;
   hidePalette();
+  inputEl.placeholder = '';
 };
 
 // 承認メニューの選択肢
@@ -852,7 +1021,7 @@ const handleNoInputWithLLM = async (action, userInput) => {
     await api.rejectAction().catch(() => {}); // 既に拒否済みでもエラーを無視
     
     // ユーザー入力を送信
-    const data = await api.think(sessionId, userInput, 'dialogue');
+    const data = await api.think({ source: 'dialogue', text: userInput, sessionId });
     setTalking(false);
     
     // 新しいコマンド提案があれば承認メニューを表示
@@ -1009,6 +1178,13 @@ const openCommandOptions = (commandId) => {
     resetCommandState();
     return;
   }
+  if (commandId === 'retry') {
+    commandState = { type: 'value', commandId };
+    hidePalette();
+    inputEl.value = '';
+    inputEl.placeholder = 'retry task id (e.g., G4-T1)';
+    return;
+  }
 
   const options = consoleConfig?.command_palette?.options?.[commandId];
   if (!options) {
@@ -1098,22 +1274,16 @@ try {
         // Goal候補承認待ち → 再表示
         if (action?.phase === 'awaiting_goals_confirm') {
           const goals = action?.data?.goals || [];
-          addLine('text-line--avatar', `${avatarName}> 目標案を提案します。`);
-          goals.forEach((goal, index) => {
-            addLine('text-line--avatar', `${avatarName}> ${index + 1}. ${goal.name}`);
-          });
-          addLine('text-line--avatar', `${avatarName}> この目標群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力`);
+          const goalList = goals.map((g, i) => `  ${i + 1}. ${g.name}`).join('\n');
+          addLine('text-line--avatar', `${avatarName}> 目標案を提案します。\n${goalList}\nこの目標群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力`);
           return;
         }
 
         // Task候補承認待ち → 再表示
         if (action?.phase === 'awaiting_tasks_confirm') {
           const tasks = action?.data?.tasks || [];
-          addLine('text-line--avatar', `${avatarName}> タスク案を提案します。`);
-          tasks.forEach((task, index) => {
-            addLine('text-line--avatar', `${avatarName}> ${index + 1}. ${task.name}`);
-          });
-          addLine('text-line--avatar', `${avatarName}> このタスク群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力`);
+          const taskList = tasks.map((t, i) => `  ${i + 1}. ${t.name}`).join('\n');
+          addLine('text-line--avatar', `${avatarName}> タスク案を提案します。\n${taskList}\nこのタスク群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力`);
           return;
         }
 
@@ -1200,26 +1370,42 @@ if (inputEl) {
   };
 
   // コマンドの値入力を確定する。
-  const confirmValueInput = () => {
-    if (!commandState || commandState.type !== 'value') {
-      return false;
-    }
-    const value = inputEl.value.trim();
-    if (!value) {
-      failFast('Command value is missing.');
-    }
-    applyAdminUpdate(commandState.commandId, value)
+const confirmValueInput = () => {
+  if (!commandState || commandState.type !== 'value') {
+    return false;
+  }
+  const value = inputEl.value.trim();
+  if (!value) {
+    failFast('Command value is missing.');
+  }
+  if (commandState.commandId === 'retry') {
+    const api = requireSpectraApi();
+    api.retryTask({ task_id: value })
       .then(() => {
         resetCommandState();
         inputEl.value = '';
         inputEl.focus();
-        addLine('text-line--system', `> updated ${commandState.commandId}`);
+        addLine('text-line--system', `> retry ${value}`);
+        updateMissionPane();
+        updateInspectorPane();
       })
       .catch((error) => {
         failFast(error instanceof Error ? error.message : String(error));
       });
     return true;
-  };
+  }
+  applyAdminUpdate(commandState.commandId, value)
+    .then(() => {
+      resetCommandState();
+      inputEl.value = '';
+      inputEl.focus();
+      addLine('text-line--system', `> updated ${commandState.commandId}`);
+    })
+    .catch((error) => {
+      failFast(error instanceof Error ? error.message : String(error));
+    });
+  return true;
+};
 
   inputEl.addEventListener('keydown', (event) => {
     if (event.isComposing || event.key !== 'Enter') {

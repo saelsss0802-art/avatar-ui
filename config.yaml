@@ -14,6 +14,9 @@ grok:
   model: grok-4-1-fast-non-reasoning
   temperature: 1.0
   daily_token_limit: 100000
+  # search_web / search_x: on | off
+  search_web: "on"
+  search_x: "on"
 
 system_prompt: |
   技術的で直接的なスタイルで簡潔に応答してください。
@@ -42,10 +45,18 @@ goal_framework:
   task_completion: auto
 
 console_ui:
-  theme_color: '#00FF41'
+  theme_color: '#00FF00'
   user_color: '#86FFE0'
   tool_color: '#FFFFFF'
   opacity: 0.75
+  # アバター発話エフェクト
+  avatar_effect:
+    enabled: true
+    char_delay_ms: 45      # 文字間隔
+    blip_freq_hz: 520      # 周波数
+    blip_duration_ms: 18   # 音の長さ
+    blip_volume: 0.04      # 音量
+    lip_sync_interval_ms: 90  # リップシンク切替間隔
   brightness: 1.2
   glow_text: 1.0
   glow_box: 1.0
@@ -66,6 +77,9 @@ console_ui:
       - id: system_prompt
         label: /system_prompt
         description: edit system prompt
+      - id: retry
+        label: /retry
+        description: retry task by id (e.g., G4-T1)
       - id: reset
         label: /reset
         description: reset all state (purpose, goals, tasks)

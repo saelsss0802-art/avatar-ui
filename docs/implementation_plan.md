@@ -266,7 +266,9 @@ spectra/
 - [x] PowerShellバナー消去（-NoLogo, -NoProfile）
 - [x] Avatar Space汎用化（環境変数 > config > デフォルト）
 
-##### 2.7.6 目的/目標/タスクの承認フロー（ユーザー主導）
+#### 2.8 承認フロー拡張
+
+##### 2.8.1 目的/目標/タスクの承認フロー（ユーザー主導）
 - [ ] Goal候補の提示と承認（y/n）をRuntimeに追加
 - [ ] Task候補の提示と承認（y/n）をRuntimeに追加
 - [ ] Goal完了承認（全タスク完了後のy/n）を追加
@@ -274,30 +276,67 @@ spectra/
 - [ ] 継続型Purposeは自動完了しない（ユーザー明示のみ）
 - [ ] 承認待ち状態の再起動復元（Goal/Task/Purpose）
 
-##### 2.7.5 Roblox Backend（将来）
+#### 2.9 Grok機能拡張
+
+##### 2.9.1 Web Search
+- [ ] config.yaml: `grok.search_web` / `grok.search_x`（on/off）を追加
+- [ ] Core: SearchParametersをON/OFF切替（Web / X を個別設定）
+- [ ] 追加設定・プロンプト文言は不要（最小実装を優先）
+
+### Phase 3: マルチチャネル（v0.3.0）
+
+> **前提**: 全チャネル自分専用（プライベート）運用を想定
+
+#### 3.1 セキュリティ設計
+
+**設計原則**
+1. 入力経路の制限（誰が話せるか）
+2. 権限の分離（何ができるか）
+3. セッションの分離（何を知っているか）
+
+**チャネル別設計**
+
+| チャネル | authority | session | capabilities | 想定 |
+|----------|-----------|---------|--------------|------|
+| Console | owner | private | all | 自分だけ |
+| Discord | owner | private | all | 個人サーバー |
+| Roblox（プライベート） | owner | private | all | プライベートサーバー |
+| Roblox（公開） | guest | public | dialogue only | 不特定多数（将来） |
+
+**リスクと対策**
+
+| リスク | 対策 |
+|--------|------|
+| プロンプトインジェクション | 不特定入力 → dialogue only（コマンド禁止） |
+| 過去の記憶漏洩 | 不特定入力 → public session（履歴なし） |
+| APIキー漏洩 | `.env`をgit管理外、公開しない |
+
+#### 3.2 Discord連携
+- [ ] Discord Bot実装
+- [ ] 個人サーバー想定（owner権限）
+- [ ] Allowlist（自分のDiscord IDのみ）
+
+#### 3.3 Roblox連携
 - [ ] Roblox Backend最小実装
 - [ ] HttpService経由のExecRequest受信
 - [ ] ExecResult返却
+- [ ] CF Tunnel設定
+- [ ] プライベートサーバー想定（owner権限）
+- [ ] 公開サーバー対応（guest権限・将来）
 
-### Phase 3: Coreの最小骨格
-- [ ] `core/brain.py` — LLM + Context の統合
-- [ ] `core/policy.py` — 承認判定の最小版
-- [ ] `core/tools/` — 最小セット（read-only中心）
-- [ ] Event/Response の型定義
+#### 3.4 権限システム
+- [ ] authority設計（owner/guest）
+- [ ] capability設計（all/dialogue/read-only）
+- [ ] セッション分離（private/public）
 
-### Phase 4: Channels（対話経路）拡張
-- [x] Roblox: 動作確認済み
-- [ ] X: 最小の投稿/返信フロー（承認必須）
-
-### Phase 5: 安全柵
+### Phase 4: 安全柵
 - [ ] Tool Runnerの危険コマンド禁止リスト
 - [ ] 変更実行時の差分表示
 - [ ] .env へのアクセス禁止
 
-### Phase 6: 結合テスト
+### Phase 5: 結合テスト
 - [ ] 承認フローの通しテスト（Console/Discord）
 - [ ] Roblox往復テスト
-- [ ] X承認投稿テスト
 
 ---
 
@@ -321,6 +360,10 @@ spectra/
 | 2026-01-29 | Inspectorタイムライン化（THINKイベントのみ表示） |
 | 2026-01-29 | 逐次的な目標・タスク生成（バッチ→ストリーミング的） |
 | 2026-01-29 | 再起動時の状態復元（承認待ち等の再表示） |
+| 2026-02-04 | v0.2.0はローカル専用・自分だけが使用する前提 |
+| 2026-02-04 | v0.3.0セキュリティ設計: authority/session/capability分離 |
+| 2026-02-04 | 全チャネル自分専用（プライベート）なら隔離不要 |
+| 2026-02-04 | 不特定多数入力時はdialogue only + public session |
 
 ---
 

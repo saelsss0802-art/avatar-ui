@@ -307,7 +307,57 @@ systemctl --user list-units 'clawdbot*'
 
 ---
 
+## 7. セキュリティ設計（公式ガイドより）
+
+> 出典: docs.openclaw.ai/gateway/security, docs.openclaw.ai/sandboxing
+
+### 脅威モデル
+
+- シェル実行・ファイル読書き・ネットワーク・メッセージ送信が可能
+- 攻撃者はメッセージ経由で誘導できる（プロンプトインジェクション）
+- **「プロンプトだけでは防げない」と公式が明言**
+
+### アクセス制御（最優先）
+
+| 制御 | 説明 |
+|------|------|
+| **Pairing** | DM許可の事前登録 |
+| **Allowlist** | 許可送信者のリスト（空や`*`は全開放） |
+| **Mention Gating** | グループでは@メンションのみ反応 |
+
+### サンドボックス
+
+| モード | 動作 |
+|--------|------|
+| `off` | ホストで直接実行（危険） |
+| `non-main` | main以外のエージェントを隔離 |
+| `all` | 全てDocker内で実行 |
+
+### 高リスクツール
+
+- `exec` / `browser` / `web_search` / `web_fetch` は制限推奨
+- **elevated（ホスト実行への逃げ道）は許可元を極限まで絞る**
+
+### 設計原則（3軸）
+
+1. **誰が話せるか** — pairing / allowlist / mention gating
+2. **どこで動くか** — sandbox on/off / elevated
+3. **何に触れるか** — tools allow/deny
+
+### SPECTRAへの適用
+
+| 項目 | OpenClaw | SPECTRA（v0.3.0方針） |
+|------|----------|----------------------|
+| 入力制御 | pairing/allowlist | authority（owner/guest） |
+| 実行隔離 | Docker sandbox | 権限分離（all/dialogue） |
+| 記憶分離 | mainのみMEMORY.md読み込み | session（private/public） |
+
+**結論**: 「全チャネル自分専用」なら隔離不要。不特定入力時はdialogue only + public session。
+
+---
+
 ## 更新履歴
 
 - 2026-01-22: 初版作成（公式ドキュメント検証に基づく）
 - 2026-01-22: メモリ読み込み経路・ベクトルDB自動構築の詳細を追記
+- 2026-02-04: セキュリティ設計（公式ガイド）とSPECTRA適用方針を追記

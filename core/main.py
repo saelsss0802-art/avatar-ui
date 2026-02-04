@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from xai_sdk import Client
 from xai_sdk.chat import system, user
+from xai_sdk.tools import web_search, x_search
 
 from core.state import (
     load_state,
@@ -85,6 +86,15 @@ def _load_config() -> dict:
         raise RuntimeError("grok.temperature must be a number")
     if not 0.0 <= float(grok["temperature"]) <= 2.0:
         raise RuntimeError("grok.temperature must be between 0.0 and 2.0")
+    # search_web / search_x は任意だが、指定されている場合は値を検証する。
+    for key in ("search_web", "search_x"):
+        value = grok.get(key, "on")
+        if not isinstance(value, str):
+            raise RuntimeError(f"grok.{key} must be a string")
+        value = value.strip().lower()
+        if value not in ("on", "off"):
+            raise RuntimeError(f"grok.{key} must be one of: on, off")
+        grok[key] = value
     return config
 
 
@@ -225,11 +235,29 @@ def _build_state_context() -> str:
 def _new_chat():
     # 新規チャットを作成し、動的システムプロンプトを注入する。
     grok = CONFIG["grok"]
+    # Agent Tools: Web/X検索を必要に応じて有効化
+    tools = []
+    if grok.get("search_web") != "off":
+        tools.append(web_search())
+    if grok.get("search_x") != "off":
+        tools.append(x_search())
     chat = _client.chat.create(
         model=grok["model"],
         temperature=float(grok["temperature"]),
+        tools=tools or None,
     )
     chat.append(system(_build_system_prompt()))
+    return chat
+
+
+def _new_json_chat():
+    """JSON出力専用チャット（タスク/目標生成用）。"""
+    grok = CONFIG["grok"]
+    chat = _client.chat.create(
+        model=grok["model"],
+        temperature=float(grok["temperature"]),
+        response_format="json_object",
+    )
     return chat
 
 
@@ -582,8 +610,8 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
 
     feedback_context = f"\nユーザーからの修正指示: {feedback}" if feedback else ""
     
-    # 自律ループ共有セッションを使用（過去の実行結果が蓄積される）
-    chat = _sessions.get_chat(_CORE_SESSION_ID)
+    # JSON出力専用チャットで生成（形式崩れを防止）
+    chat = _new_json_chat()
     chat.append(user(
         "【目標生成タスク】\n"
         "以下の目的に対して、必要十分な目標群を提案してください。\n"
@@ -635,14 +663,14 @@ def _propose_goals(purpose: str, existing_goals: list, feedback: Optional[str] =
         )
         update_thought(STATE, f"目標提案: {len(goals)}件", "ユーザー承認待ち")
         save_state(STATE)
+    append_event("thought", judgment=f"目標提案: {len(goals)}件", intent="ユーザー承認待ち")
 
-    append_event("output", pane="dialogue", text=f"{avatar_name}> 目標案を提案します。")
-    for idx, g in enumerate(goals, start=1):
-        append_event("output", pane="dialogue", text=f"{avatar_name}> {idx}. {g['name']}")
+    # 目標一覧を1つのメッセージにまとめて出力
+    goal_list = "\n".join(f"  {idx}. {g['name']}" for idx, g in enumerate(goals, start=1))
     append_event(
         "output",
         pane="dialogue",
-        text=f"{avatar_name}> この目標群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力",
+        text=f"{avatar_name}> 目標案を提案します。\n{goal_list}\nこの目標群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力",
     )
     return True
 
@@ -717,6 +745,7 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
     """目標に対するタスク候補を提案し、ユーザー承認待ちにする。"""
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
     goal_id = goal.get("id", "G?")
+    purpose = STATE.get("mission", {}).get("purpose") or ""
     append_event("output", pane="dialogue", text=f"{avatar_name}> {goal_id}のタスクを考えています...")
 
     completed_tasks = [t for t in existing_tasks if t.get("status") == "done"]
@@ -724,8 +753,8 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
     completed_context = f"\n完了済みタスク: {', '.join(completed_names)}" if completed_names else ""
     feedback_context = f"\nユーザーからの修正指示: {feedback}" if feedback else ""
 
-    # 自律ループ共有セッションを使用（過去の実行結果が蓄積される）
-    chat = _sessions.get_chat(_CORE_SESSION_ID)
+    # JSON出力専用チャットで生成（形式崩れを防止）
+    chat = _new_json_chat()
     chat.append(user(
         "【タスク生成タスク】\n"
         "以下の目標に対して、必要十分なタスク群を提案してください。\n"
@@ -742,6 +771,7 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
         f"{completed_context}"
         f"{feedback_context}\n"
         "JSON形式で返してください: {\"tasks\": [{\"name\": \"タスク名\", \"trigger\": \"実行条件(if)\", \"response\": \"実行内容(then)\"}]}\n"
+        f"目的: {purpose}\n"
         f"目標: {goal['name']}\nこの目標を達成するためのタスクを提案してください。"
     ))
     try:
@@ -778,14 +808,14 @@ def _propose_tasks(goal: dict, existing_tasks: list, feedback: Optional[str] = N
         )
         update_thought(STATE, f"タスク提案: {len(tasks)}件", "ユーザー承認待ち")
         save_state(STATE)
+    append_event("thought", judgment=f"タスク提案: {len(tasks)}件", intent="ユーザー承認待ち")
 
-    append_event("output", pane="dialogue", text=f"{avatar_name}> {goal_id}のタスク案を提案します。")
-    for idx, t in enumerate(tasks, start=1):
-        append_event("output", pane="dialogue", text=f"{avatar_name}> {idx}. {t['name']}")
+    # タスク一覧を1つのメッセージにまとめて出力
+    task_list = "\n".join(f"  {idx}. {t['name']}" for idx, t in enumerate(tasks, start=1))
     append_event(
         "output",
         pane="dialogue",
-        text=f"{avatar_name}> このタスク群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力",
+        text=f"{avatar_name}> {goal_id}のタスク案を提案します。\n{task_list}\nこのタスク群で進めますか？ [y] 承認 / [n] 再提案 / 修正内容を入力",
     )
     return True
 
@@ -949,8 +979,8 @@ def _execute_task(goal: dict, task: dict) -> float:
         update_task_status(STATE, task["id"], "active")
         save_state(STATE)
 
-    # 自律ループ共有セッションを使用（過去の実行結果が蓄積される）
-    chat = _sessions.get_chat(_CORE_SESSION_ID)
+    # JSON出力専用チャットで実行提案（形式崩れを防止）
+    chat = _new_json_chat()
     chat.append(user(
         "【タスク実行】\n"
         "以下のタスクを実行するためのコマンドを提案してください。\n"
@@ -966,6 +996,14 @@ def _execute_task(goal: dict, task: dict) -> float:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
+        # 形式崩れは即停止してユーザーに通知（fail-fast）
+        error_summary = "タスク実行のJSON出力が不正でした。"
+        with _state_lock:
+            update_thought(STATE, "タスク実行失敗", "JSON出力不正")
+            update_result(STATE, "fail", error_summary)
+            update_action(STATE, "awaiting_continue", error_summary)
+            save_state(STATE)
+        append_event("output", pane="dialogue", text=f"ERROR> {error_summary}")
         return _loop_interval_idle()
 
     command = data.get("command")
@@ -1239,6 +1277,15 @@ def _save_config(updated: dict) -> None:
 app = FastAPI()
 
 
+@app.exception_handler(Exception)
+def handle_unexpected_error(request: Request, exc: Exception):
+    # 想定外エラーもJSONで返す（Consoleが落ちないようにする）
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc) or "Internal Server Error"},
+    )
+
+
 @app.on_event("startup")
 def on_startup():
     """起動時に自律ループを開始する。"""
@@ -1400,6 +1447,10 @@ class TaskRequest(BaseModel):
     name: str
 
 
+class RetryTaskRequest(BaseModel):
+    task_id: str
+
+
 @app.post("/admin/task")
 def add_task_endpoint(payload: TaskRequest, request: Request):
     # タスクを追加する。
@@ -1410,6 +1461,54 @@ def add_task_endpoint(payload: TaskRequest, request: Request):
         add_task(STATE, payload.goal_id.strip(), payload.task_id.strip(), payload.name.strip())
         save_state(STATE)
     return {"goals": STATE["mission"]["goals"]}
+
+
+@app.post("/admin/retry")
+def retry_task_endpoint(payload: RetryTaskRequest, request: Request):
+    """指定タスクを再試行する（対象タスクをactiveにしてループを起こす）。"""
+    _check_api_key(request)
+    task_id = payload.task_id.strip()
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is empty")
+
+    with _state_lock:
+        target_goal = None
+        target_task = None
+        for goal in STATE["mission"]["goals"]:
+            for task in goal.get("tasks", []):
+                if task.get("id") == task_id:
+                    target_goal = goal
+                    target_task = task
+                    break
+            if target_task:
+                break
+
+        if not target_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # 他のactiveタスクはpendingに戻す（再試行を優先）
+        for goal in STATE["mission"]["goals"]:
+            for task in goal.get("tasks", []):
+                if task.get("status") == "active" and task.get("id") != task_id:
+                    task["status"] = "pending"
+
+        # 対象goalをactiveにして優先する
+        for goal in STATE["mission"]["goals"]:
+            if goal is target_goal:
+                goal["status"] = "active"
+            elif goal.get("status") == "active":
+                goal["status"] = "pending"
+
+        target_task["status"] = "active"
+        clear_action(STATE)
+        clear_result(STATE)
+        update_thought(STATE, "タスク再試行", f"{task_id}")
+        save_state(STATE)
+        goal_id = target_goal["id"]
+
+    append_event("system", action="retry_task", task_id=task_id, goal_id=goal_id)
+    _loop_wake_event.set()
+    return {"status": "retrying", "task_id": task_id, "goal_id": goal_id}
 
 
 @app.post("/admin/reject")

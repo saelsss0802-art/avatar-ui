@@ -208,33 +208,75 @@ ipcMain.on('terminal:resize', (event, payload) => {
   terminal.resize(payload.cols, payload.rows);
 });
 
-// システム情報を取得する（CPU, メモリ, ネットワーク）。
+// アプリ関連プロセスのPIDを収集する。
+const collectAppPids = (allProcs) => {
+  const pids = new Set();
+  const mainPid = process.pid;
+  
+  // Electronプロセスツリー（自身と子孫）
+  const addDescendants = (parentPid) => {
+    pids.add(parentPid);
+    for (const p of allProcs) {
+      if (p.parentPid === parentPid && !pids.has(p.pid)) {
+        addDescendants(p.pid);
+      }
+    }
+  };
+  addDescendants(mainPid);
+  
+  // Python Core（spectraまたはuvicornを含む）
+  for (const p of allProcs) {
+    if (p.name?.toLowerCase().includes('python')) {
+      const cmd = (p.command || '').toLowerCase();
+      if (cmd.includes('spectra') || cmd.includes('uvicorn')) {
+        pids.add(p.pid);
+      }
+    }
+  }
+  
+  return pids;
+};
+
+// システム情報を取得する（アプリ固有のCPU, メモリ + PC全体のネットワーク）。
 ipcMain.handle('system:info', async () => {
-  const [load, mem, net] = await Promise.all([
-    si.currentLoad(),
+  const [procs, mem, net] = await Promise.all([
+    si.processes(),
     si.mem(),
     si.networkStats(),
   ]);
   
-  // ネットワーク速度はプライマリインターフェースから取得
+  const allProcs = procs.list || [];
+  const appPids = collectAppPids(allProcs);
+  
+  // アプリ関連プロセスのCPU/メモリを合計
+  let totalCpu = 0;
+  let totalMem = 0;
+  for (const p of allProcs) {
+    if (appPids.has(p.pid)) {
+      totalCpu += p.cpu || 0;
+      totalMem += p.memRss || 0; // KB単位
+    }
+  }
+  
+  // ネットワーク速度（プロセス別は不可、PC全体）
   const primaryNet = net.find(n => n.operstate === 'up') || net[0] || {};
-  const netSpeed = ((primaryNet.rx_sec || 0) + (primaryNet.tx_sec || 0)) / 1e6; // Mbps
+  const netSpeed = ((primaryNet.rx_sec || 0) + (primaryNet.tx_sec || 0)) / 1e6;
   
   return {
     cpu: {
-      value: Math.round(load.currentLoad),
+      value: Math.round(totalCpu * 10) / 10,
       unit: '%',
       max: 100,
     },
     memory: {
-      value: parseFloat((mem.used / 1e9).toFixed(1)),
-      unit: 'GB',
-      max: Math.round(mem.total / 1e9),
+      value: Math.round(totalMem / 1024), // KB→MB
+      unit: 'MB',
+      max: Math.round(mem.total / 1e6), // bytes→MB
     },
     network: {
       value: parseFloat(netSpeed.toFixed(1)),
       unit: 'Mbps',
-      max: 100, // 仮の上限
+      max: 100,
     },
   };
 });
