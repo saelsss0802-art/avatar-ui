@@ -1,9 +1,17 @@
 # AVATAR UI
 
-人と AI が共存する次世代インターフェース基盤。  
-Gemini・GPT・Claude 対応。デスクトップで動くエージェント UI。
+<p align="center">
+  📖 <a href="./README.md">English</a>
+</p>
 
-![demo](./docs/assets/avatar-ui_demo_02.gif)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Node.js 18+](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+
+デスクトップで動く、自分専用AIアバターのエージェントUI。  
+目的を与えれば、アバターが自ら計画し実行する。
+
+![demo](./docs/assets/demo_v0.2.ja.gif)
 
 <p align="center">
   <a href="https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ" target="_blank" rel="noopener">
@@ -23,148 +31,103 @@ Gemini・GPT・Claude 対応。デスクトップで動くエージェント UI�
 
 ## 特徴
 
-- **マルチLLM対応** – Gemini / OpenAI / Anthropic を設定で切り替え
-- **ツール拡張対応** – 検索エージェント標準搭載。MCP連携・ツール追加可
-- **パーソナライズUI** – 3種のカラーテーマ。アバター変更も自由
-- **デスクトップアプリ** – ローカル動作。macOS / Windows / Linux 対応
-- **商用利用可** – オープンソース（MIT）。個人・商用問わず自由に利用可能
+- **ローカル専用** – 自分のマシンで完結
+- **自律ループ** – 目的 → 目標 → タスクの階層構造で自動計画
+- **OS操作** – ファイル操作やコマンド実行をアバターが提案・実行
+- **Avatar Space** – 隔離された作業領域
+- **Grokスタック統合** – Web/Xから情報を自動取得
+- **リアルタイム監視** – CPU/メモリ/API使用量
 
 ## 使い方
 
-1. アプリ起動 → アバターが待機状態で表示
-2. メッセージ入力 → `Enter` で送信
-3. アバターがリアルタイム応答
-4. 必要に応じて Google 検索を自動実行
-5. 終了：`Ctrl+C`
+1. Coreを起動 → Consoleが表示される
+2. 目的を設定 → アバターが目標・タスクを提案
+3. 各アクションを承認または拒否
+4. アバターが実行し結果を報告
 
 ## クイックスタート
 
-### 必要なもの
+### 前提条件
 
-- Node.js 20+
-- Python 3.12+
-- API キー（いずれか1つ以上）
-  - [Gemini](https://aistudio.google.com/app/apikey)
-  - [OpenAI](https://platform.openai.com/api-keys)
-  - [Anthropic](https://console.anthropic.com/settings/keys)
-
-> ⚠️ 外部 API（Gemini / OpenAI / Anthropic 等）の利用は各サービスの利用規約に従ってください。API キーは本リポジトリに含まれていません。
+- Python 3.10+
+- Node.js 18+
+- [xAI APIキー](https://x.ai/)
 
 ### 1. リポジトリを取得
-
-GitHub からソースコードをダウンロードします（`git clone` コマンド）。
 
 ```bash
 git clone https://github.com/siqidev/avatar-ui.git
 cd avatar-ui
 ```
 
-### 2. 環境変数を設定
-
-API キーなどの秘密情報を `.env` ファイルに保存します。  
-まずテンプレートをコピー:
+### 2. セットアップ
 
 ```bash
-cp .env.example .env
+# Python
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Console
+cd command/console && npm install && cd ../..
 ```
 
-`.env` を開き、使用する LLM の API キーを設定:
+### 3. 環境変数
 
-```dotenv
-GOOGLE_API_KEY=your-api-key-here
-# OpenAI / Anthropic を使う場合は対応するキーも設定
-```
-
-### 3. セットアップと起動
-
-#### macOS / Linux
+`.env` を作成:
 
 ```bash
-# プロジェクトのルートへ移動（あなたのパスに置き換えてください）
-# 例：Documents フォルダに配置した場合
-cd ~/Documents/avatar-ui
+XAI_API_KEY=your-xai-api-key
+AVATAR_API_KEY=your-secret-key
+AVATAR_CORE_URL=http://127.0.0.1:8000/v1/think
+```
 
-# サーバー準備（Python 仮想環境を作成し、依存をインストール）
-cd server
-python3 -m venv .venv   # 初回のみ
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `XAI_API_KEY` | ✅ | xAI API（Grok）のキー |
+| `AVATAR_API_KEY` | ✅ | Core APIアクセス制限用 |
+| `AVATAR_CORE_URL` | ✅ | Core APIのURL |
+| `AVATAR_SHELL` | | 使用するシェル（デフォルト: OS標準） |
+| `AVATAR_SPACE` | | 作業ディレクトリ（デフォルト: ~/Avatar） |
+
+### 4. 起動
+
+```bash
+# ターミナル1: Core
 source .venv/bin/activate
-pip install -e .        # 初回のみ
+python -m uvicorn core.main:app --host 127.0.0.1 --port 8000
 
-# 起動（サーバー + クライアント同時）
-cd ../app
-npm install             # 初回のみ
-npm run dev:all
+# ターミナル2: Console
+cd command/console && npm start
 ```
-
-#### Windows (PowerShell)
-
-```powershell
-# プロジェクトのルートへ移動（あなたのパスに置き換えてください）
-# 例：Documents フォルダに配置した場合
-cd "$HOME\Documents\avatar-ui"
-
-# サーバー準備（Python 仮想環境を作成し、依存をインストール）
-cd server
-python -m venv .venv    # 初回のみ
-.\.venv\Scripts\Activate.ps1
-pip install -e .        # 初回のみ
-
-# 起動（サーバー + クライアント同時）
-cd ..\app
-npm install             # 初回のみ
-npm run dev:all
-```
-
-起動すると Electron アプリが自動で開きます。開発中はターミナルに表示される URL（例: `http://localhost:5173`）からブラウザでも確認できます。
 
 ## 設定
 
-設定ファイルをコピーして編集します:
+`config.yaml` を編集:
 
-```bash
-cp settings.default.json5 settings.json5
+```yaml
+avatar:
+  name: AVATAR
+
+grok:
+  model: grok-4-1-fast-non-reasoning
+  temperature: 1.0
+  daily_token_limit: 100000
+
+system_prompt: |
+  技術的で直接的なスタイルで簡潔に応答してください。
 ```
-
-`settings.json5` で LLM やテーマなどを変更できます。
-
-### LLM の切り替え
-
-```json5
-"server": {
-  "llmProvider": "gemini",       // gemini | openai | anthropic
-  "llmModel": "gemini-2.5-flash"
-}
-```
-
-対応する API キーを `.env` に設定し、サーバーを再起動してください。
-
-### 検索サブエージェント
-
-デフォルトで Google 検索サブエージェントが有効です（Gemini モデルで動作）。  
-無効化する場合:
-
-```json5
-"searchSubAgent": {
-  "enabled": false
-}
-```
-
-検索サブエージェントは Gemini API を使用するため、利用には `GOOGLE_API_KEY` の設定が必要です。
-
-### カスタマイズ一覧
 
 | 項目 | 設定場所 |
 |------|----------|
-| システムプロンプト | `settings.json5` → `server.systemPrompt` |
-| テーマ・色 | `settings.json5` → `ui.theme`, `ui.themes` |
-| アバター画像 | `app/src/renderer/assets/` に配置 |
-| ツール追加 | `server/main.py` → `tools` リスト |
+| アバター名・ペルソナ | `config.yaml` → `avatar`, `system_prompt` |
+| テーマ・色 | `config.yaml` → `console_ui` |
+| アバター画像 | `command/console/assets/` |
 
 ## ドキュメント
 
-- [設計書](./docs/project.md) – アーキテクチャ、実装詳細、ロードマップ
-- [AG-UI Protocol](https://docs.ag-ui.com/) – プロトコル仕様（公式）
-- [Google ADK](https://google.github.io/adk-docs/) – エージェント開発キット（公式）
+- [アーキテクチャ](docs/agent_design.md)
+- [実装計画](docs/implementation_plan.md)
 
 ## サポート
 
@@ -177,6 +140,18 @@ Token CA (Solana): `63rvcwia2reibpdJMCf71bPLqBLvPRu9eM2xmRvNory`
 - GeckoTerminal: https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ
 
 > 本セクションは情報提供を目的としており、投資助言や勧誘を意図するものではありません。
+
+## セキュリティ
+
+AVATAR UIはOS権限でコマンドを実行します。
+
+| 原則 | 内容 |
+|------|------|
+| **ローカル専用** | 自分だけが使用する前提で設計 |
+| **承認フロー** | コマンド実行前に内容を確認 |
+| **APIキー管理** | `.env`をgit管理外に保持 |
+
+> Discord/Roblox連携はv0.3.0で対応予定。
 
 ## ライセンス
 

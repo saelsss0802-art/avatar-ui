@@ -4,10 +4,14 @@
   📖 <a href="./README.ja.md">日本語版はこちら</a>
 </p>
 
-A next-generation interface foundation where humans and AI coexist.  
-Supports Gemini, GPT, and Claude. An agent UI that runs on your desktop.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Node.js 18+](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 
-![demo](./docs/assets/avatar-ui_demo_02.gif)
+A desktop agent UI for personal AI avatars.  
+Give it a purpose, and the avatar plans and executes autonomously.
+
+![demo](./docs/assets/demo_v0.2.gif)
 
 <p align="center">
   <a href="https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ" target="_blank" rel="noopener">
@@ -27,148 +31,103 @@ Supports Gemini, GPT, and Claude. An agent UI that runs on your desktop.
 
 ## Features
 
-- **Multi-LLM support** – Switch Gemini / OpenAI / Anthropic via config
-- **Extensible tools** – Built-in search sub-agent. MCP integration and adding tools supported
-- **Personalized UI** – Three color themes. Swap avatars freely
-- **Desktop app** – Runs locally. Supports macOS / Windows / Linux
-- **Commercial use OK** – Open source (MIT). Free for personal and commercial use
+- **Local-first** – Runs entirely on your machine
+- **Autonomous loop** – Purpose → Goal → Task hierarchy with automatic planning
+- **OS operations** – Avatar proposes and executes file operations and commands
+- **Avatar Space** – Isolated working directory
+- **Grok stack integration** – Auto-fetch information from Web/X
+- **Real-time vitals** – CPU, memory, and API usage monitoring
 
 ## Usage
 
-1. Launch the app → the avatar appears in standby
-2. Type a message → press `Enter` to send
-3. The avatar responds in real time
-4. Automatically runs Google Search when needed
-5. Quit: `Ctrl+C`
+1. Launch Core → Console appears
+2. Set a purpose → Avatar proposes goals and tasks
+3. Approve or reject each action
+4. Avatar executes and reports results
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 20+
-- Python 3.12+
-- API key (at least one)
-  - [Gemini](https://aistudio.google.com/app/apikey)
-  - [OpenAI](https://platform.openai.com/api-keys)
-  - [Anthropic](https://console.anthropic.com/settings/keys)
-
-> ⚠️ Please follow the terms of service for external APIs (Gemini / OpenAI / Anthropic, etc.). API keys are not included in this repository.
+- Python 3.10+
+- Node.js 18+
+- [xAI API key](https://x.ai/)
 
 ### 1. Get the repository
-
-Download the source code from GitHub (`git clone`).
 
 ```bash
 git clone https://github.com/siqidev/avatar-ui.git
 cd avatar-ui
 ```
 
-### 2. Set environment variables
-
-Store secrets such as API keys in the `.env` file.  
-First, copy the template:
+### 2. Setup
 
 ```bash
-cp .env.example .env
+# Python
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Console
+cd command/console && npm install && cd ../..
 ```
 
-Open `.env` and set the API key for the LLM you want to use:
+### 3. Environment variables
 
-```dotenv
-GOOGLE_API_KEY=your-api-key-here
-# If you use OpenAI / Anthropic, set the corresponding keys too
-```
-
-### 3. Setup and run
-
-#### macOS / Linux
+Create `.env`:
 
 ```bash
-# Move to the project root (replace with your path)
-# Example: if placed in the Documents folder
-cd ~/Documents/avatar-ui
+XAI_API_KEY=your-xai-api-key
+AVATAR_API_KEY=your-secret-key
+AVATAR_CORE_URL=http://127.0.0.1:8000/v1/think
+```
 
-# Server setup (create a Python venv and install dependencies)
-cd server
-python3 -m venv .venv   # first time only
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `XAI_API_KEY` | ✅ | xAI API (Grok) key |
+| `AVATAR_API_KEY` | ✅ | Core API access restriction |
+| `AVATAR_CORE_URL` | ✅ | Core API URL |
+| `AVATAR_SHELL` | | Shell to use (default: OS standard) |
+| `AVATAR_SPACE` | | Working directory (default: ~/Avatar) |
+
+### 4. Run
+
+```bash
+# Terminal 1: Core
 source .venv/bin/activate
-pip install -e .        # first time only
+python -m uvicorn core.main:app --host 127.0.0.1 --port 8000
 
-# Run (server + client together)
-cd ../app
-npm install             # first time only
-npm run dev:all
+# Terminal 2: Console
+cd command/console && npm start
 ```
-
-#### Windows (PowerShell)
-
-```powershell
-# Move to the project root (replace with your path)
-# Example: if placed in the Documents folder
-cd "$HOME\Documents\avatar-ui"
-
-# Server setup (create a Python venv and install dependencies)
-cd server
-python -m venv .venv    # first time only
-.\.venv\Scripts\Activate.ps1
-pip install -e .        # first time only
-
-# Run (server + client together)
-cd ..\app
-npm install             # first time only
-npm run dev:all
-```
-
-When it starts, the Electron app opens automatically. During development, you can also open the URL shown in the terminal (e.g. `http://localhost:5173`) in your browser.
 
 ## Configuration
 
-Copy the config file and edit it:
+Edit `config.yaml`:
 
-```bash
-cp settings.default.json5 settings.json5
+```yaml
+avatar:
+  name: AVATAR
+
+grok:
+  model: grok-4-1-fast-non-reasoning
+  temperature: 1.0
+  daily_token_limit: 100000
+
+system_prompt: |
+  Respond concisely in a technical style.
 ```
 
-You can change the LLM, theme, and more in `settings.json5`.
-
-### Switch LLMs
-
-```json5
-"server": {
-  "llmProvider": "gemini",       // gemini | openai | anthropic
-  "llmModel": "gemini-2.5-flash"
-}
-```
-
-Set the corresponding API key in `.env` and restart the server.
-
-### Search sub-agent
-
-The Google Search sub-agent is enabled by default (runs with a Gemini model).  
-To disable it:
-
-```json5
-"searchSubAgent": {
-  "enabled": false
-}
-```
-
-Because the search sub-agent uses the Gemini API, you must set `GOOGLE_API_KEY`.
-
-### Customization
-
-| Item | Where to configure |
+| Item | Location |
 |------|----------|
-| System prompt | `settings.json5` → `server.systemPrompt` |
-| Theme / colors | `settings.json5` → `ui.theme`, `ui.themes` |
-| Avatar images | Place under `app/src/renderer/assets/` |
-| Add tools | `server/main.py` → `tools` list |
+| Avatar name / persona | `config.yaml` → `avatar`, `system_prompt` |
+| Theme / colors | `config.yaml` → `console_ui` |
+| Avatar images | `command/console/assets/` |
 
 ## Documentation
 
-- [Design doc](./docs/project.md) – Architecture, implementation details, roadmap
-- [AG-UI Protocol](https://docs.ag-ui.com/) – Protocol specification (official)
-- [Google ADK](https://google.github.io/adk-docs/) – Agent Development Kit (official)
+- [Architecture](docs/agent_design.md)
+- [Implementation Plan](docs/implementation_plan.md)
 
 ## Support
 
@@ -181,6 +140,18 @@ Token CA (Solana): `63rvcwia2reibpdJMCf71bPLqBLvPRu9eM2xmRvNory`
 - GeckoTerminal: https://www.geckoterminal.com/solana/pools/ky7frWSyXRcHKvN7UXyPuhA5rjP1ypDPDJNEHxJubmJ
 
 > This section is for informational purposes only and does not constitute investment advice.
+
+## Security
+
+AVATAR UI executes commands with OS privileges.
+
+| Principle | Description |
+|-----------|-------------|
+| **Local only** | Designed for single-user local operation |
+| **Approval flow** | Review commands before execution |
+| **API key management** | Keep `.env` out of git |
+
+> External access (Discord, Roblox) planned for v0.3.0.
 
 ## License
 
