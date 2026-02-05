@@ -124,11 +124,6 @@ system_prompt: |
 | テーマ・色 | `config.yaml` → `console_ui` |
 | アバター画像 | `command/console/assets/` |
 
-## ドキュメント
-
-- [アーキテクチャ](docs/agent_design.md)
-- [実装計画](docs/implementation_plan.md)
-
 ## サポート
 
 AUIはAVATAR UIを応援するコミュニティトークンです。  

@@ -124,11 +124,6 @@ system_prompt: |
 | Theme / colors | `config.yaml` → `console_ui` |
 | Avatar images | `command/console/assets/` |
 
-## Documentation
-
-- [Architecture](docs/agent_design.md)
-- [Implementation Plan](docs/implementation_plan.md)
-
 ## Support
 
 AUI is the community token for supporting AVATAR UI.  
