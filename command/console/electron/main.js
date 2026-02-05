@@ -51,7 +51,6 @@ const getDefaultAvatarSpace = () => {
 
 const getConfigPath = () => (
   process.env.AVATAR_CONFIG ||
-  process.env.AVATAR_CONFIG ||  // 後方互換（非推奨）
   path.join(__dirname, '..', '..', '..', 'config.yaml')
 );
 

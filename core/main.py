@@ -91,6 +91,24 @@ def _load_config() -> dict:
     if language not in ("ja", "en"):
         raise RuntimeError("user.language must be one of: ja, en")
     user["language"] = language
+    # 任意: 言語選択肢
+    language_options = user.get("language_options")
+    if language_options is None:
+        user["language_options"] = [language]
+    else:
+        if not isinstance(language_options, list) or not language_options:
+            raise RuntimeError("user.language_options must be a non-empty list")
+        cleaned_languages = []
+        for lang in language_options:
+            if not isinstance(lang, str):
+                raise RuntimeError("user.language_options must contain strings")
+            lang = lang.strip().lower()
+            if lang not in ("ja", "en"):
+                raise RuntimeError("user.language_options must be one of: ja, en")
+            cleaned_languages.append(lang)
+        user["language_options"] = cleaned_languages
+        if language not in user["language_options"]:
+            raise RuntimeError("user.language must be included in user.language_options")
 
     # grokセクションの必須キーを検証する。
     grok = config["grok"]
@@ -103,6 +121,36 @@ def _load_config() -> dict:
         raise RuntimeError("grok.temperature must be a number")
     if not 0.0 <= float(grok["temperature"]) <= 2.0:
         raise RuntimeError("grok.temperature must be between 0.0 and 2.0")
+    # 任意: モデル候補リスト
+    models = grok.get("models")
+    if models is None:
+        grok["models"] = [grok["model"]]
+    else:
+        if not isinstance(models, list) or not models:
+            raise RuntimeError("grok.models must be a non-empty list")
+        cleaned_models = []
+        for model in models:
+            if not isinstance(model, str) or not model.strip():
+                raise RuntimeError("grok.models must contain non-empty strings")
+            cleaned_models.append(model.strip())
+        grok["models"] = cleaned_models
+        if grok["model"] not in grok["models"]:
+            raise RuntimeError("grok.model must be included in grok.models")
+    # 任意: 温度プリセット
+    temp_presets = grok.get("temperature_presets")
+    if temp_presets is None:
+        grok["temperature_presets"] = [float(grok["temperature"])]
+    else:
+        if not isinstance(temp_presets, list) or not temp_presets:
+            raise RuntimeError("grok.temperature_presets must be a non-empty list")
+        cleaned_temps = []
+        for value in temp_presets:
+            if not isinstance(value, (int, float)):
+                raise RuntimeError("grok.temperature_presets must contain numbers")
+            if not 0.0 <= float(value) <= 2.0:
+                raise RuntimeError("grok.temperature_presets values must be between 0.0 and 2.0")
+            cleaned_temps.append(round(float(value), 1))
+        grok["temperature_presets"] = cleaned_temps
     # search_web / search_x は任意だが、指定されている場合は値を検証する。
     for key in ("search_web", "search_x"):
         value = grok.get(key, "on")
@@ -204,10 +252,11 @@ def _get_token_usage() -> dict:
 def _build_env_context() -> str:
     """実行環境のコンテキストを生成する。"""
     from core.exec import get_avatar_space
-    return f"""## 実行環境
-- OS: {platform.system()} {platform.release()}
-- Shell: {os.environ.get('SHELL', 'unknown')}
-- CWD: {get_avatar_space()}"""
+    space = get_avatar_space(CONFIG)
+    return f"""## {_msg('実行環境', 'Runtime Environment')}
+- {_msg('OS', 'OS')}: {platform.system()} {platform.release()}
+- {_msg('Shell', 'Shell')}: {os.environ.get('SHELL', 'unknown')}
+- {_msg('CWD', 'CWD')}: {space}"""
 
 
 def _build_system_prompt() -> str:
@@ -240,8 +289,9 @@ def _build_state_context() -> str:
         state_copy = copy.deepcopy(STATE)
 
     mission = state_copy.get("mission", {})
-    purpose = mission.get("purpose") or "（未設定）"
-    purpose_type = mission.get("purpose_type") or "（未設定）"
+    unset_label = _msg("（未設定）", "(unset)")
+    purpose = mission.get("purpose") or unset_label
+    purpose_type = mission.get("purpose_type") or unset_label
     goals = mission.get("goals", [])
 
     goals_summary = ""
@@ -251,12 +301,12 @@ def _build_state_context() -> str:
             for t in g.get("tasks", []):
                 goals_summary += f"  - {t['id']}: {t['name']} ({t['status']})\n"
     else:
-        goals_summary = "（なし）"
+        goals_summary = _msg("（なし）", "(none)")
 
-    return f"""[現在の状態]
-目的: {purpose}
-目的タイプ: {purpose_type}
-目標とタスク:
+    return f"""{_msg('[現在の状態]', '[Current State]')}
+{_msg('目的', 'Purpose')}: {purpose}
+{_msg('目的タイプ', 'Purpose Type')}: {purpose_type}
+{_msg('目標とタスク', 'Goals & Tasks')}:
 {goals_summary}"""
 
 
@@ -1102,11 +1152,8 @@ def _handle_task_fail_response(text: str, session_id: str) -> dict:
     if text_lower in ("r", "retry", "再試行"):
         # 再試行: タスクをpendingに戻して再実行
         with _state_lock:
-            for goal in STATE["mission"]["goals"]:
-                for task in goal.get("tasks", []):
-                    if task["id"] == task_id:
-                        task["status"] = "pending"
-                        break
+            if task_id:
+                update_task_status(STATE, task_id, "pending")
             clear_action(STATE)
             update_thought(STATE, "タスク再試行", task_id)
             save_state(STATE)
@@ -1124,8 +1171,10 @@ def _handle_task_fail_response(text: str, session_id: str) -> dict:
         }
 
     if text_lower in ("s", "skip", "スキップ"):
-        # スキップ: タスクをfailのままにして次へ
+        # スキップ: タスクをfailにして次へ
         with _state_lock:
+            if task_id:
+                update_task_status(STATE, task_id, "fail")
             clear_action(STATE)
             update_thought(STATE, "タスクスキップ", task_id)
             save_state(STATE)
@@ -1145,12 +1194,13 @@ def _handle_task_fail_response(text: str, session_id: str) -> dict:
     # コンテキスト入力: フィードバックとして再試行
     feedback = text.strip()
     with _state_lock:
-        for goal in STATE["mission"]["goals"]:
-            for task in goal.get("tasks", []):
-                if task["id"] == task_id:
-                    task["status"] = "pending"
-                    task["feedback"] = feedback  # フィードバックを保存
-                    break
+        if task_id:
+            update_task_status(STATE, task_id, "pending")
+            for goal in STATE["mission"]["goals"]:
+                for task in goal.get("tasks", []):
+                    if task["id"] == task_id:
+                        task["feedback"] = feedback  # フィードバックを保存
+                        break
         clear_action(STATE)
         update_thought(STATE, "タスク再試行（コンテキスト付き）", feedback)
         save_state(STATE)
@@ -1176,6 +1226,9 @@ def _execute_task(goal: dict, task: dict) -> float:
         update_task_status(STATE, task["id"], "active")
         save_state(STATE)
 
+    feedback = task.get("feedback")
+    feedback_line = f"\n補足: {feedback}" if feedback else ""
+
     # タスク実行は独立セッション（コンテキスト汚染防止）
     grok = CONFIG["grok"]
     chat = _client.chat.create(
@@ -1195,7 +1248,7 @@ def _execute_task(goal: dict, task: dict) -> float:
         "会話だけで完了するタスクの場合は: {\"command\": null, \"summary\": \"完了理由\"}\n"
         "出力はJSONオブジェクト1つのみ（前後の説明やコードブロックは禁止）\n"
         "JSON以外のテキスト・マークダウン・コメントは一切禁止\n"
-        f"タスク: {task['name']}"
+        f"タスク: {task['name']}{feedback_line}"
     ))
     try:
         result = _sample_with_timeout(chat)
@@ -1628,6 +1681,23 @@ def console_config(request: Request):
         "user": CONFIG["user"]["name"],
     }
     ui["language"] = CONFIG["user"]["language"]
+    palette = ui.get("command_palette") or {}
+    options: dict = {}
+    models = CONFIG.get("grok", {}).get("models") or []
+    if models:
+        options["model"] = models
+    temps = CONFIG.get("grok", {}).get("temperature_presets") or []
+    if temps:
+        options["temperature"] = temps
+    languages = CONFIG.get("user", {}).get("language_options") or []
+    if languages:
+        label_map = {"ja": "Japanese", "en": "English"}
+        options["language"] = [
+            {"label": label_map.get(lang, lang), "value": lang}
+            for lang in languages
+        ]
+    palette["options"] = options
+    ui["command_palette"] = palette
     return {"console_ui": ui}
 
 
@@ -1841,6 +1911,10 @@ def complete_action(payload: CompleteRequest, request: Request):
     # 現在の行動を完了し、タスクを更新する。
     _check_api_key(request)
     avatar_name = CONFIG.get("avatar", {}).get("name", "Avatar")
+    run_cycle = False
+    output_text = None
+    summary = None
+    success = payload.success
     with _state_lock:
         if not STATE.get("action"):
             raise HTTPException(status_code=400, detail="No action to complete")
@@ -1856,9 +1930,7 @@ def complete_action(payload: CompleteRequest, request: Request):
             clear_action(STATE)
             update_result(STATE, "done", summary)
             save_state(STATE)
-            append_event("result", status="done", summary=summary)
-            # 次のタスクを同期的に処理
-            _cycle_step()
+            run_cycle = True
         else:
             # 失敗: 再試行/スキップ/コンテキスト入力を求める
             active_task = _get_active_task()
@@ -1871,13 +1943,21 @@ def complete_action(payload: CompleteRequest, request: Request):
             )
             update_result(STATE, "fail", summary)
             save_state(STATE)
-            append_event("result", status="fail", summary=summary)
             # 失敗通知と選択肢を出力
-            append_event(
-                "output",
-                pane="dialogue",
-                text=f"{avatar_name}> {_msg(f'タスク「{task_name}」が失敗しました: {summary}', f'Task \"{task_name}\" failed: {summary}')}\n[r] {_msg('再試行', 'Retry')} / [s] {_msg('スキップ', 'Skip')} / {_msg('コンテキストを入力', 'Enter context')}",
+            output_text = (
+                f"{avatar_name}> "
+                f"{_msg(f'タスク「{task_name}」が失敗しました: {summary}', f'Task \"{task_name}\" failed: {summary}')}\n"
+                f"[r] {_msg('再試行', 'Retry')} / [s] {_msg('スキップ', 'Skip')} / {_msg('コンテキストを入力', 'Enter context')}"
             )
+
+    if success:
+        append_event("result", status="done", summary=summary)
+        # 次のタスクを同期的に処理（ロック外）
+        _cycle_step()
+    else:
+        append_event("result", status="fail", summary=summary)
+        if output_text:
+            append_event("output", pane="dialogue", text=output_text)
 
     # 次のアクション情報を含めて返す
     with _state_lock:

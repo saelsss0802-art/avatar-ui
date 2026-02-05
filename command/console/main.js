@@ -586,7 +586,16 @@ const updateMissionPane = async () => {
 
 // Inspectorタイムラインに表示済みのイベントIDを追跡
 let inspectorDisplayedEvents = new Set();
+let inspectorIgnoreBefore = null;
 const INSPECTOR_MAX_ENTRIES = 10;
+
+const resetInspectorTimeline = () => {
+  inspectorDisplayedEvents = new Set();
+  inspectorIgnoreBefore = new Date().toISOString();
+  if (inspectorTimelineEl) {
+    inspectorTimelineEl.innerHTML = "";
+  }
+};
 
 // Inspectorタイムラインにエントリを追加する（THINKのみ、2行表示）。
 const addInspectorEntry = (text, isNew = true) => {
@@ -677,6 +686,7 @@ const updateInspectorPane = async () => {
     if (events.length === 0) return;
 
     // 新しいイベントを古い順に処理（タイムラインの先頭に追加するため）
+    const ignoreBefore = inspectorIgnoreBefore ? new Date(inspectorIgnoreBefore).getTime() : null;
     const newEvents = events.filter((e) => !inspectorDisplayedEvents.has(e.time + e.type));
     
     // 古い順にソート
@@ -684,6 +694,13 @@ const updateInspectorPane = async () => {
 
     for (const event of newEvents) {
       const eventId = event.time + event.type;
+      if (ignoreBefore) {
+        const eventTime = event.time ? new Date(event.time).getTime() : 0;
+        if (eventTime && eventTime <= ignoreBefore) {
+          inspectorDisplayedEvents.add(eventId);
+          continue;
+        }
+      }
       inspectorDisplayedEvents.add(eventId);
 
       // THINKのみ表示（ACT/DONEはDialogueに表示されるため）
@@ -820,12 +837,19 @@ const setupTerminal = () => {
     return new Promise((resolve) => {
       terminalCapture = {
         buffer: '',
+        command,
         maxBytes,
         idleMs,
         truncated: false,
         timer: null,
         finish: () => {
-          const result = terminalCapture;
+          let buffer = terminalCapture.buffer;
+          // コマンドエコーバックの先頭文字重複を除去
+          const firstChar = command[0];
+          if (firstChar && buffer.startsWith(firstChar + command)) {
+            buffer = buffer.slice(1);
+          }
+          const result = { ...terminalCapture, buffer };
           terminalCapture = null;
           resolve(result);
         },
@@ -849,8 +873,21 @@ const setupTerminal = () => {
           logConsoleEntry({ kind: 'terminal', text: output, pane: 'terminal' });
         }
 
-        // 観測結果（差分）を送信し、LLMに検証させる。
-        // observationにはコマンドと出力を含める。
+        // 明確な失敗パターンはLLM不要で即判定
+        const FAIL_PATTERNS = [
+          /no such file or directory/i,
+          /command not found/i,
+          /permission denied/i,
+          /not recognized as/i,
+          /cannot find/i,
+          /does not exist/i,
+        ];
+        const explicitFailure = FAIL_PATTERNS.find((p) => p.test(output));
+        if (explicitFailure) {
+          return { success: false, message: `failed: ${label}` };
+        }
+
+        // 明確な失敗がなければLLMに検証させる
         const observation = {
           session_id: sessionId,
           command,
@@ -860,7 +897,7 @@ const setupTerminal = () => {
         return api.sendObservation(observation);
       })
       .then((verifyResult) => {
-        // Core側で差分検証した結果を受け取る
+        // 検証結果を受け取る（即判定またはCore側の差分検証）
         const success = verifyResult?.success !== false;
         const rawMessage = verifyResult?.message || `done: ${label}`;
         let summary = rawMessage;
@@ -972,8 +1009,12 @@ const renderApprovalMenu = () => {
 
 // 承認が必要な操作を記録する。
 const requestApproval = (commandId, value, label) => {
+  // 既に承認処理中なら二重発火を防ぐ
+  if (pendingApproval) return;
+
   // ホワイトリストに登録されているコマンドは自動承認
   if (commandId === '__terminal__' && isCommandWhitelisted(value)) {
+    pendingApproval = { commandId, value, label, auto: true };
     addLine('text-line--system', `> auto-approved (whitelisted): ${label}`);
     const api = requireAvatarApi();
     api.approveAction()
@@ -982,6 +1023,9 @@ const requestApproval = (commandId, value, label) => {
       })
       .catch((error) => {
         addLine('text-line--error', `ERROR> ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        pendingApproval = null;
       });
     return;
   }
@@ -1121,6 +1165,7 @@ const handleApprovalInput = () => {
     api.resetState()
       .then(() => {
         addLine('text-line--system', `> ${t('状態がリセットされました', 'State reset.')}`);
+        resetInspectorTimeline();
         updateMissionPane();
         updateInspectorPane();
         inputEl.focus();
@@ -1332,6 +1377,29 @@ const renderStatePrompt = (state) => {
       )}`,
     );
     addLine('text-line--avatar', `${avatarName}> [y] Achieve / [n] Continue`);
+    return;
+  }
+
+  // タスク失敗待ち → 再表示
+  if (action?.phase === 'awaiting_task_fail') {
+    const summary = action?.data?.summary || action?.summary || '';
+    let taskName = t('タスク', 'Task');
+    const goals = state?.mission?.goals || [];
+    for (const goal of goals) {
+      const activeTask = (goal.tasks || []).find((task) => task.status === 'active');
+      if (activeTask) {
+        taskName = activeTask.name || taskName;
+        break;
+      }
+    }
+    const summaryText = summary ? `: ${summary}` : '';
+    addLine(
+      'text-line--avatar',
+      `${avatarName}> ${t(
+        `タスク「${taskName}」が失敗しました${summaryText}`,
+        `Task "${taskName}" failed${summaryText}`,
+      )}\n[r] ${t('再試行', 'Retry')} / [s] ${t('スキップ', 'Skip')} / ${t('コンテキストを入力', 'Enter context')}`,
+    );
     return;
   }
 

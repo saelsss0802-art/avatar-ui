@@ -1,6 +1,6 @@
 # SPECTRA 実装計画
 
-> 最終更新: 2026-01-29  
+> 最終更新: 2026-02-05  
 > 前提: `GrokスタックAIエージェント設計仕様書.md` Section 1 を参照
 
 ---
@@ -269,19 +269,100 @@ spectra/
 #### 2.8 承認フロー拡張
 
 ##### 2.8.1 目的/目標/タスクの承認フロー（ユーザー主導）
-- [ ] Goal候補の提示と承認（y/n）をRuntimeに追加
-- [ ] Task候補の提示と承認（y/n）をRuntimeに追加
-- [ ] Goal完了承認（全タスク完了後のy/n）を追加
-- [ ] 達成型Purpose完了承認（全Goal完了後のy/n）を追加
-- [ ] 継続型Purposeは自動完了しない（ユーザー明示のみ）
-- [ ] 承認待ち状態の再起動復元（Goal/Task/Purpose）
+- [x] Goal候補の提示と承認（y/n）をRuntimeに追加
+- [x] Task候補の提示と承認（y/n）をRuntimeに追加
+- [x] Goal完了承認（全タスク完了後のy/n）を追加
+- [x] 達成型Purpose完了承認（全Goal完了後のy/n）を追加
+- [x] 継続型Purposeは自動完了しない（ユーザー明示のみ）
+- [x] 承認待ち状態の再起動復元（Goal/Task/Purpose）
 
 #### 2.9 Grok機能拡張
 
 ##### 2.9.1 Web Search
-- [ ] config.yaml: `grok.search_web` / `grok.search_x`（on/off）を追加
-- [ ] Core: SearchParametersをON/OFF切替（Web / X を個別設定）
-- [ ] 追加設定・プロンプト文言は不要（最小実装を優先）
+- [x] config.yaml: `grok.search_web` / `grok.search_x`（on/off）を追加
+- [x] Core: SearchParametersをON/OFF切替（Web / X を個別設定）
+- [x] 追加設定・プロンプト文言は不要（最小実装を優先）
+
+##### 2.9.2 v0.2.0 リリース
+
+**背景**
+- 開発リポジトリ: `/spectra`（ローカル）
+- 公開リポジトリ: `github.com/siqidev/avatar-ui`
+- 現在の`avatar-ui` mainはv0.1.0相当
+- `/spectra`にはv0.2.0実装 + v0.3.0要素が混在
+
+**前提**
+| リポジトリ | 現状 | 目標 |
+|------------|------|------|
+| `avatar-ui` main | v0.1.0相当 | → v0.2.0 |
+| `avatar-ui` v0.1.0 | なし | → タグ作成 |
+| `/spectra` | v0.2.0 + v0.3.0混在 | → avatar-ui mainへ |
+| v0.3.0要素 | spectraに混在 | → v0.3.0ブランチへ分離 |
+
+**v0.3.0要素（分離対象）**
+- `channels/roblox/` - Roblox連携
+- `command/discord/` - Discord連携（未実装だが予約）
+- `docs/` 内のOSS必須以外のドキュメント
+
+**OSS必須ドキュメント（mainに残す）**
+- `README.md` / `README.ja.md`
+- `LICENSE`
+- `AGENT.md`
+
+**手順**
+
+1. `avatar-ui` で v0.1.0 タグ作成
+```bash
+cd /Users/u/Projects/avatar-ui
+git tag -a v0.1.0 -m "v0.1.0 release"
+git push origin v0.1.0
+```
+
+2. `/spectra` で v0.3.0 ブランチ作成（現状を保存）
+```bash
+cd /Users/u/Projects/spectra
+git checkout -b v0.3.0
+git push origin v0.3.0
+```
+
+3. main ブランチで v0.2.0 用にクリーンアップ
+```bash
+git checkout main
+# v0.3.0要素を削除
+rm -rf channels/roblox/
+rm -rf command/discord/
+# OSS必須以外のdocsを削除（必要に応じて）
+git add -A
+git commit -m "chore: remove v0.3.0 elements for v0.2.0 release"
+```
+
+4. v0.2.0 タグ作成
+```bash
+git tag -a v0.2.0 -m "v0.2.0 release"
+```
+
+5. `avatar-ui` に統合
+```bash
+cd /Users/u/Projects/avatar-ui
+git remote add spectra /Users/u/Projects/spectra
+git fetch spectra
+git checkout main
+git merge spectra/main --allow-unrelated-histories
+# コンフリクト解決後
+git push origin main
+git push origin v0.2.0
+```
+
+6. v0.3.0 ブランチも統合
+```bash
+git fetch spectra v0.3.0:v0.3.0
+git push origin v0.3.0
+```
+
+**リリース後のブランチ構成**
+- `main` - v0.2.0（最新安定版）
+- `v0.1.0` - タグ（旧版参照用）
+- `v0.3.0` - 開発ブランチ（Discord/Roblox連携）
 
 ### Phase 3: マルチチャネル（v0.3.0）
 
