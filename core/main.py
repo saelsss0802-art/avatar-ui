@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Avatar Core API Server.
-全てのチャネルはここを経由し、xai-sdkはここでのみ使う。
+全てのチャネルはここを経由する。
 """
 from __future__ import annotations
 
@@ -20,9 +20,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from xai_sdk import Client
-from xai_sdk.chat import system, user
-from xai_sdk.tools import web_search, x_search
+from openai import OpenAI
 
 from core.state import (
     load_state,
@@ -179,10 +177,10 @@ def _msg(ja: str, en: str) -> str:
 STATE = load_state()
 _state_lock = threading.Lock()
 
-# xai-sdkはAPIキー必須なので、未設定なら即エラーにする。
-_XAI_API_KEY = os.getenv("XAI_API_KEY")
-if not _XAI_API_KEY:
-    raise RuntimeError("XAI_API_KEY is not set")
+# Gemini(OpenAI互換API)のAPIキーは必須。
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not _GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY is not set")
 
 # 共有APIキーは必須。未設定なら起動時に止める。
 _AVATAR_API_KEY = os.getenv("AVATAR_API_KEY")
@@ -191,8 +189,57 @@ if not _AVATAR_API_KEY:
 
 
 # リクエスト間で共有するSDKクライアント（初期化コストを節約）。
-# timeout: ネットワークレベルのタイムアウト（秒）。executor枯渇防止。
-_client = Client(api_key=_XAI_API_KEY, timeout=30.0)
+client = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+)
+_DEFAULT_LLM_MODEL = "gemini-3-flash-preview"
+
+
+def _resolve_model() -> str:
+    return os.getenv("LLM_MODEL") or CONFIG["grok"].get("model") or _DEFAULT_LLM_MODEL
+
+
+def system(content: str) -> dict:
+    return {"role": "system", "content": content}
+
+
+def user(content: str) -> dict:
+    return {"role": "user", "content": content}
+
+
+class _ChatResponse:
+    def __init__(self, raw):
+        self._raw = raw
+        self.id = getattr(raw, "id", None)
+        self.usage = getattr(raw, "usage", None)
+        choices = getattr(raw, "choices", None) or []
+        if choices and getattr(choices[0], "message", None):
+            self.content = getattr(choices[0].message, "content", "")
+        else:
+            self.content = ""
+
+
+class _ChatSession:
+    def __init__(self, model: str, temperature: float, response_format: Optional[dict] = None):
+        self._model = model
+        self._temperature = temperature
+        self._response_format = response_format
+        self._messages: list[dict] = []
+
+    def append(self, message: dict) -> None:
+        self._messages.append(message)
+
+    def sample(self) -> _ChatResponse:
+        payload = {
+            "model": self._model,
+            "messages": self._messages,
+            "temperature": self._temperature,
+        }
+        if self._response_format is not None:
+            payload["response_format"] = self._response_format
+        raw = client.chat.completions.create(**payload)
+        return _ChatResponse(raw)
 
 # トークン使用量の追跡（日次リセット、永続化）
 _token_lock = threading.Lock()
@@ -313,16 +360,9 @@ def _build_state_context() -> str:
 def _new_chat():
     # 新規チャットを作成し、動的システムプロンプトを注入する。
     grok = CONFIG["grok"]
-    # Agent Tools: Web/X検索を必要に応じて有効化
-    tools = []
-    if grok.get("search_web") != "off":
-        tools.append(web_search())
-    if grok.get("search_x") != "off":
-        tools.append(x_search())
-    chat = _client.chat.create(
-        model=grok["model"],
+    chat = _ChatSession(
+        model=_resolve_model(),
         temperature=float(grok["temperature"]),
-        tools=tools or None,
     )
     chat.append(system(_build_system_prompt()))
     return chat
@@ -1303,10 +1343,10 @@ def _execute_task(goal: dict, task: dict) -> float:
 
     # タスク実行は独立セッション（コンテキスト汚染防止）
     grok = CONFIG["grok"]
-    chat = _client.chat.create(
-        model=grok["model"],
+    chat = _ChatSession(
+        model=_resolve_model(),
         temperature=float(grok["temperature"]),
-        response_format="json_object",  # JSON保証
+        response_format={"type": "json_object"},
     )
     chat.append(system(_build_system_prompt()))
     env_context = _build_env_context()
@@ -1613,7 +1653,7 @@ def think_core(source: str, text: str, session_id: str) -> dict:
 
 def _classify_intent(prompt: str, response_text: str) -> dict:
     # LLMに意図分類を依頼し、JSONで返させる。
-    classifier = _client.chat.create(model=CONFIG["grok"]["model"], temperature=0.0)
+    classifier = _ChatSession(model=_resolve_model(), temperature=0.0, response_format={"type": "json_object"})
     classifier.append(
         system(
             "Return a single JSON object only. Do not include any extra text or code fences. "
@@ -2360,4 +2400,3 @@ def exec_request(payload: ExecRequestPayload, request: Request):
 
     result = _backend_router.route(exec_req)
     return result.to_dict()
-
