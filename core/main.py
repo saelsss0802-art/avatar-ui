@@ -193,7 +193,11 @@ client = OpenAI(
     api_key=os.getenv("GEMINI_API_KEY"),
     base_url=os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
 )
-_LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
+_DEFAULT_LLM_MODEL = "gemini-3-flash-preview"
+
+
+def _resolve_model() -> str:
+    return os.getenv("LLM_MODEL") or CONFIG["grok"].get("model") or _DEFAULT_LLM_MODEL
 
 
 def system(content: str) -> dict:
@@ -357,7 +361,7 @@ def _new_chat():
     # 新規チャットを作成し、動的システムプロンプトを注入する。
     grok = CONFIG["grok"]
     chat = _ChatSession(
-        model=_LLM_MODEL,
+        model=_resolve_model(),
         temperature=float(grok["temperature"]),
     )
     chat.append(system(_build_system_prompt()))
@@ -1340,7 +1344,7 @@ def _execute_task(goal: dict, task: dict) -> float:
     # タスク実行は独立セッション（コンテキスト汚染防止）
     grok = CONFIG["grok"]
     chat = _ChatSession(
-        model=_LLM_MODEL,
+        model=_resolve_model(),
         temperature=float(grok["temperature"]),
         response_format={"type": "json_object"},
     )
@@ -1649,7 +1653,7 @@ def think_core(source: str, text: str, session_id: str) -> dict:
 
 def _classify_intent(prompt: str, response_text: str) -> dict:
     # LLMに意図分類を依頼し、JSONで返させる。
-    classifier = _ChatSession(model=_LLM_MODEL, temperature=0.0, response_format={"type": "json_object"})
+    classifier = _ChatSession(model=_resolve_model(), temperature=0.0, response_format={"type": "json_object"})
     classifier.append(
         system(
             "Return a single JSON object only. Do not include any extra text or code fences. "
